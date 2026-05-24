@@ -1,6 +1,6 @@
 /*****************************************************
  * UST 随机生成器 - 核心逻辑
- * 歌词库由外部的 lyrics.js 提供（全局变量）
+ * 新增：Shift-JIS 编码，解决 OpenUTAU 乱码问题
  *****************************************************/
 
 // ---------- 音名映射 ----------
@@ -13,7 +13,6 @@ let languageLibrary = PINYIN_LIB;
 const lyricLibSelect = document.getElementById('lyricLibSelect');
 const libCount = document.getElementById('libCount');
 
-// 滑块
 const shortestNoteSlider = document.getElementById('shortestNote');
 const longestNoteSlider = document.getElementById('longestNote');
 const lowestNoteSlider = document.getElementById('lowestNote');
@@ -23,7 +22,6 @@ const noteCountSlider = document.getElementById('noteCount');
 const pauseIntervalSlider = document.getElementById('pauseInterval');
 const rDurationSlider = document.getElementById('rDuration');
 
-// 输入框
 const shortestNoteInput = document.getElementById('shortestNoteInput');
 const longestNoteInput = document.getElementById('longestNoteInput');
 const lowestNoteInput = document.getElementById('lowestNoteInput');
@@ -33,11 +31,9 @@ const noteCountInput = document.getElementById('noteCountInput');
 const pauseIntervalInput = document.getElementById('pauseIntervalInput');
 const rDurationInput = document.getElementById('rDurationInput');
 
-// 音名显示标签
 const lowestNoteName = document.getElementById('lowestNoteName');
 const highestNoteName = document.getElementById('highestNoteName');
 
-// 其他
 const smoothPitchCheck = document.getElementById('smoothPitch');
 const smoothLengthCheck = document.getElementById('smoothLength');
 const generateBtn = document.getElementById('generateBtn');
@@ -89,7 +85,6 @@ function bindPitchSliderAndInput(slider, input, nameSpan) {
     bindSliderAndInput(slider, input, updateName);
 }
 
-// 绑定所有控件
 bindSliderAndInput(shortestNoteSlider, shortestNoteInput);
 bindSliderAndInput(longestNoteSlider, longestNoteInput);
 bindPitchSliderAndInput(lowestNoteSlider, lowestNoteInput, lowestNoteName);
@@ -110,6 +105,128 @@ lyricLibSelect.addEventListener('change', () => {
     }
 });
 libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
+
+// ---------- Shift-JIS 编码器（覆盖日文假名及 ASCII）----------
+const SHIFT_JIS_MAP = new Map([
+    // 半角 ASCII 字符 (0x00-0x7E 直接映射，0x20 空格等)
+    // 只列出非控制字符的映射，实际处理时 0x20-0x7E 都是一字节
+    // 平假名 (清音)
+    ['\u3042', 0x82A0], // あ
+    ['\u3044', 0x82A2], // い
+    ['\u3046', 0x82A4], // う
+    ['\u3048', 0x82A6], // え
+    ['\u304A', 0x82A8], // お
+    ['\u304B', 0x82A9], // か
+    ['\u304D', 0x82AB], // き
+    ['\u304F', 0x82AD], // く
+    ['\u3051', 0x82AF], // け
+    ['\u3053', 0x82B1], // こ
+    ['\u3055', 0x82B3], // さ
+    ['\u3057', 0x82B5], // し
+    ['\u3059', 0x82B7], // す
+    ['\u305B', 0x82B9], // せ
+    ['\u305D', 0x82BB], // そ
+    ['\u305F', 0x82BD], // た
+    ['\u3061', 0x82BF], // ち
+    ['\u3064', 0x82C1], // つ
+    ['\u3066', 0x82C3], // て
+    ['\u3068', 0x82C5], // と
+    ['\u306A', 0x82C7], // な
+    ['\u306B', 0x82C9], // に
+    ['\u306C', 0x82CB], // ぬ
+    ['\u306D', 0x82CD], // ね
+    ['\u306E', 0x82CF], // の
+    ['\u306F', 0x82D1], // は
+    ['\u3072', 0x82D3], // ひ
+    ['\u3075', 0x82D5], // ふ
+    ['\u3078', 0x82D7], // へ
+    ['\u307B', 0x82D9], // ほ
+    ['\u307E', 0x82DB], // ま
+    ['\u307F', 0x82DD], // み
+    ['\u3080', 0x82DF], // む
+    ['\u3081', 0x82E1], // め
+    ['\u3082', 0x82E3], // も
+    ['\u3084', 0x82E5], // や
+    ['\u3086', 0x82E7], // ゆ
+    ['\u3088', 0x82E9], // よ
+    ['\u3089', 0x82EB], // ら
+    ['\u308A', 0x82ED], // り
+    ['\u308B', 0x82EF], // る
+    ['\u308C', 0x82F1], // れ
+    ['\u308D', 0x82F3], // ろ
+    ['\u308F', 0x82F5], // わ
+    ['\u3092', 0x82F7], // を
+    ['\u3093', 0x82F9], // ん
+    // 浊音
+    ['\u304C', 0x82AA], // が
+    ['\u304E', 0x82AC], // ぎ
+    ['\u3050', 0x82AE], // ぐ
+    ['\u3052', 0x82B0], // げ
+    ['\u3054', 0x82B2], // ご
+    ['\u3056', 0x82B4], // ざ
+    ['\u3058', 0x82B6], // じ
+    ['\u305A', 0x82B8], // ず
+    ['\u305C', 0x82BA], // ぜ
+    ['\u305E', 0x82BC], // ぞ
+    ['\u3060', 0x82BE], // だ
+    ['\u3062', 0x82C0], // ぢ
+    ['\u3065', 0x82C2], // づ
+    ['\u3067', 0x82C4], // で
+    ['\u3069', 0x82C6], // ど
+    ['\u3070', 0x82D2], // ば
+    ['\u3073', 0x82D4], // び
+    ['\u3076', 0x82D6], // ぶ
+    ['\u3079', 0x82D8], // べ
+    ['\u307C', 0x82DA], // ぼ
+    // 半浊音
+    ['\u3071', 0x82E0], // ぱ
+    ['\u3074', 0x82E2], // ぴ
+    ['\u3077', 0x82E4], // ぷ
+    ['\u307A', 0x82E6], // ぺ
+    ['\u307D', 0x82E8], // ぽ
+    // 拗音 (组合假名，Shift-JIS 中是两个独立字符，但我们的库中存的是组合，需拆开编码)
+    // 例如 'きゃ' -> き + ゃ ，编码时分别处理
+    // 小假名
+    ['\u3083', 0x82E0], // ゃ
+    ['\u3085', 0x82E5], // ゅ
+    ['\u3087', 0x82EB], // ょ
+    // 其他小假名（用于拗音）
+    ['\u3041', 0x829F], // ぁ (未用到，保留)
+    ['\u3043', 0x82A1], // ぃ
+    ['\u3045', 0x82A3], // ぅ
+    ['\u3047', 0x82A5], // ぇ
+    ['\u3049', 0x82A7], // ぉ
+    ['\u3063', 0x82C0], // っ (促音，实际在日文中也会出现)
+    // 半角片假名范围等，目前用不到
+]);
+
+function encodeCharToShiftJIS(ch) {
+    const code = ch.charCodeAt(0);
+    // ASCII 范围 (空格 0x20 到 '~' 0x7E)
+    if (code >= 0x20 && code <= 0x7E) {
+        return [code];
+    }
+    // 换行符
+    if (code === 0x0A) return [0x0A];
+    if (code === 0x0D) return [0x0D];
+    // 假名映射
+    const sjis = SHIFT_JIS_MAP.get(ch);
+    if (sjis !== undefined) {
+        return [(sjis >> 8) & 0xFF, sjis & 0xFF];
+    }
+    // 若包含拼音中的 'v' 或其它未映射字符，用 '?' 替代
+    console.warn('Unmapped character in Shift-JIS:', ch);
+    return [0x3F]; // '?'
+}
+
+function encodeToShiftJIS(str) {
+    const bytes = [];
+    for (const ch of str) {
+        const b = encodeCharToShiftJIS(ch);
+        bytes.push(...b);
+    }
+    return new Uint8Array(bytes);
+}
 
 // ---------- 截断正态分布 ----------
 function erf(x) {
@@ -278,18 +395,24 @@ function buildLyricsText(lyricsSequence) {
     return lyricsSequence.join(' ');
 }
 
-// ---------- 生成按钮与下载 ----------
+// ---------- 生成按钮与下载（Shift-JIS 编码） ----------
 generateBtn.addEventListener('click', () => {
     statusBar.textContent = '正在生成...';
     downloadLinksDiv.style.display = 'none';
     downloadLinksDiv.innerHTML = '';
     try {
         const { noteList, lyricsSequence, bpm } = generateUST();
-        const ustContent = buildUSTContent(noteList, bpm);
-        const lyricsContent = buildLyricsText(lyricsSequence);
+        const ustText = buildUSTContent(noteList, bpm);
+        const lyricsText = buildLyricsText(lyricsSequence);
 
-        const createLink = (text, filename, content) => {
-            const blob = new Blob([content], { type: 'application/octet-stream' });
+        // UST 文件转为 Shift-JIS 字节
+        const ustBytes = encodeToShiftJIS(ustText);
+        const ustBlob = new Blob([ustBytes], { type: 'application/octet-stream' });
+
+        // 歌词文件保持 UTF-8
+        const lyricsBlob = new Blob([lyricsText], { type: 'application/octet-stream;charset=utf-8' });
+
+        const createLink = (text, filename, blob) => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -302,10 +425,10 @@ generateBtn.addEventListener('click', () => {
             return a;
         };
 
-        downloadLinksDiv.appendChild(createLink('⬇️ 下载 UST 文件', 'generated.ust', ustContent));
-        downloadLinksDiv.appendChild(createLink('⬇️ 下载歌词文本', 'generated.txt', lyricsContent));
+        downloadLinksDiv.appendChild(createLink('⬇️ 下载 UST 文件 (Shift-JIS)', 'generated.ust', ustBlob));
+        downloadLinksDiv.appendChild(createLink('⬇️ 下载歌词文本', 'generated.txt', lyricsBlob));
         downloadLinksDiv.style.display = 'flex';
-        statusBar.textContent = `生成成功！共 ${noteList.length} 个音符，点击下方链接下载文件。`;
+        statusBar.textContent = `生成成功！共 ${noteList.length} 个音符，文件已转为 Shift-JIS 编码。`;
     } catch (e) {
         statusBar.textContent = '错误: ' + e.message;
         alert('生成失败: ' + e.message);
