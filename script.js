@@ -1,12 +1,12 @@
 /*****************************************************
  * UST 随机生成器 - 核心逻辑
- * 新增：滑块与输入框双向同步
+ * 歌词库由外部的 lyrics.js 提供（全局变量）
  *****************************************************/
 
 // ---------- 音名映射 ----------
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-// 当前使用的歌词库 (默认拼音)
+// 当前使用的歌词库 (默认拼音，来自 lyrics.js)
 let languageLibrary = PINYIN_LIB;
 
 // ---------- DOM 元素引用 ----------
@@ -60,19 +60,16 @@ function secondsToUSTLength(seconds, bpm) {
     return Math.round(seconds * bpm * 480 / 60);
 }
 
-// ---------- 双向同步核心 ----------
+// ---------- 双向同步 ----------
 function bindSliderAndInput(slider, input, callback) {
-    // 滑块 -> 输入框
     const fromSlider = () => {
         const val = parseFloat(slider.value);
         input.value = val;
         if (callback) callback(val);
     };
-    // 输入框 -> 滑块
     const fromInput = () => {
         let val = parseFloat(input.value);
         if (isNaN(val)) return;
-        // 钳位
         val = Math.min(parseFloat(input.max), Math.max(parseFloat(input.min), val));
         input.value = val;
         slider.value = val;
@@ -81,14 +78,10 @@ function bindSliderAndInput(slider, input, callback) {
 
     slider.addEventListener('input', fromSlider);
     input.addEventListener('input', fromInput);
-    // 失焦时也校正一次
     input.addEventListener('blur', fromInput);
-
-    // 初始同步
     fromSlider();
 }
 
-// 音高滑块需要额外显示音名
 function bindPitchSliderAndInput(slider, input, nameSpan) {
     const updateName = (val) => {
         nameSpan.textContent = getNoteName(Math.round(val));
@@ -96,7 +89,7 @@ function bindPitchSliderAndInput(slider, input, nameSpan) {
     bindSliderAndInput(slider, input, updateName);
 }
 
-// ---------- 绑定所有控件 ----------
+// 绑定所有控件
 bindSliderAndInput(shortestNoteSlider, shortestNoteInput);
 bindSliderAndInput(longestNoteSlider, longestNoteInput);
 bindPitchSliderAndInput(lowestNoteSlider, lowestNoteInput, lowestNoteName);
@@ -118,7 +111,7 @@ lyricLibSelect.addEventListener('change', () => {
 });
 libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
 
-// ---------- 截断正态分布随机数生成 (纯数学实现) ----------
+// ---------- 截断正态分布 ----------
 function erf(x) {
     const sign = (x >= 0) ? 1 : -1;
     x = Math.abs(x);
@@ -188,7 +181,7 @@ function truncatedNormalRandom(mu, sigma, minVal, maxVal) {
     return Math.round(val);
 }
 
-// ---------- UST 生成核心 ----------
+// ---------- UST 生成 ----------
 function getRandomLyric() {
     if (languageLibrary.length > 0) {
         return languageLibrary[Math.floor(Math.random() * languageLibrary.length)];
@@ -217,7 +210,6 @@ function generateUST() {
     const lyricsSequence = [];
     let currentTime = 0.0;
 
-    // 第一个音符
     const avgNoteNum = Math.min(highest, Math.max(lowest, Math.floor((lowest + highest) / 2)));
     const firstLyric = getRandomLyric();
     const firstLength = Math.round((shortest + longest) / 2);
@@ -225,7 +217,6 @@ function generateUST() {
     lyricsSequence.push(firstLyric);
     currentTime += noteLengthToSeconds(firstLength, bpm);
 
-    // 生成后续音符
     for (let i = 1; i < count; i++) {
         if (currentTime >= pauseInterval) {
             const pauseLength = secondsToUSTLength(rDuration, bpm);
@@ -323,7 +314,6 @@ generateBtn.addEventListener('click', () => {
 
 // ---------- 重置按钮 ----------
 resetBtn.addEventListener('click', () => {
-    // 恢复所有滑块默认值
     shortestNoteSlider.value = 240;
     longestNoteSlider.value = 960;
     lowestNoteSlider.value = 60;
@@ -338,7 +328,6 @@ resetBtn.addEventListener('click', () => {
     languageLibrary = PINYIN_LIB;
     libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
 
-    // 触发滑块事件以同步输入框
     [shortestNoteSlider, longestNoteSlider, lowestNoteSlider, highestNoteSlider,
         bpmSlider, noteCountSlider, pauseIntervalSlider, rDurationSlider].forEach(s => s.dispatchEvent(new Event('input')));
 
@@ -346,5 +335,3 @@ resetBtn.addEventListener('click', () => {
     downloadLinksDiv.style.display = 'none';
     downloadLinksDiv.innerHTML = '';
 });
-
-// 页面初始化时不需额外操作，因为 bindSliderAndInput 已经执行了初始同步
