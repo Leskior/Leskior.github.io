@@ -76,11 +76,19 @@ input[type="range"]::-webkit-slider-thumb {
     box-shadow: 0 1px 4px rgba(0,0,0,0.2);
 }
 .param-value {
-    width: 60px;
     text-align: center;
     font-weight: bold;
     color: #2c3e50;
     font-size: 0.95em;
+    min-width: 40px;
+}
+.num-input {
+    width: 70px;
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.95em;
+    text-align: center;
 }
 .checkbox-label {
     display: flex;

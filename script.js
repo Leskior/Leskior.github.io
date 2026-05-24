@@ -1,71 +1,10 @@
 /*****************************************************
  * UST 随机生成器 - 核心逻辑
- * 包含：内置歌词库、滑块交互、正态分布采样、UST生成与下载
- * 最新修正：停顿后音符完全随机，避免从C4附近恢复
+ * 新增：滑块与输入框双向同步
  *****************************************************/
 
 // ---------- 音名映射 ----------
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-// ---------- 内置歌词库 ----------
-const PINYIN_LIB = [
-    "a","ai","an","ang","ao","ba","bai","ban","bang","bao","bei","ben","beng","bi","bian","biao","bie",
-    "bin","bing","bo","bu","ca","cai","can","cang","cao","ce","cen","ceng","cha","chai","chan","chang",
-    "chao","che","chen","cheng","chi","chong","chou","chu","chua","chuai","chuan","chuang","chui","chun",
-    "chuo","ci","cong","cou","cu","cuan","cui","cun","cuo","da","dai","dan","dang","dao","de","dei","den",
-    "deng","di","dian","diao","die","ding","diu","dong","dou","du","duan","dui","dun","duo","e","ei",
-    "en","eng","er","fa","fan","fang","fei","fen","feng","fo","fou","fu","ga","gai","gan","gang","gao",
-    "ge","gei","gen","geng","gong","gou","gu","gua","guai","guan","guang","gui","gun","guo","ha","hai",
-    "han","hang","hao","he","hei","hen","heng","hong","hou","hu","hua","huai","huan","huang","hui","hun",
-    "huo","ji","jia","jian","jiang","jiao","jie","jin","jing","jiong","jiu","ju","juan","jue","jun","ka",
-    "kai","kan","kang","kao","ke","ken","keng","kong","kou","ku","kua","kuai","kuan","kuang","kui","kun",
-    "kuo","la","lai","lan","lang","lao","le","lei","leng","li","lia","lian","liang","liao","lie","lin",
-    "ling","liu","long","lou","lu","luan","lun","luo","lv","lve","ma","mai","man","mang","mao","me","mei",
-    "men","meng","mi","mian","miao","mie","min","ming","miu","mo","mou","mu","na","nai","nan","nang",
-    "nao","ne","nei","nen","neng","ni","nian","niang","niao","nie","nin","ning","niu","nong","nou","nu",
-    "nuan","nuo","nv","nve","o","ou","pa","pai","pan","pang","pao","pei","pen","peng","pi","pian","piao",
-    "pie","pin","ping","po","pou","pu","qi","qia","qian","qiang","qiao","qie","qin","qing","qiong","qiu",
-    "qu","quan","que","qun","ran","rang","rao","re","ren","reng","ri","rong","rou","ru","ruan","rui","run",
-    "ruo","sa","sai","san","sang","sao","se","sen","seng","sha","shai","shan","shang","shao","she","shei",
-    "shen","sheng","shi","shou","shu","shua","shuai","shuan","shuang","shui","shun","shuo","si","song",
-    "sou","su","suan","sui","sun","suo","ta","tai","tan","tang","tao","te","teng","ti","tian","tiao","tie",
-    "ting","tong","tou","tu","tuan","tui","tun","tuo","wa","wai","wan","wang","wei","wen","weng","wo","wu",
-    "xi","xia","xian","xiang","xiao","xie","xin","xing","xiong","xiu","xu","xuan","xue","xun","ya","yan",
-    "yang","yao","ye","yi","yin","ying","yong","you","yu","yuan","yue","yun","za","zai","zan","zang","zao",
-    "ze","zei","zen","zeng","zha","zhai","zhan","zhang","zhao","zhe","zhei","zhen","zheng","zhi","zhong",
-    "zhou","zhu","zhua","zhuai","zhuan","zhuang","zhui","zhun","zhuo","zi","zong","zou","zu","zuan","zui",
-    "zun","zuo"
-];
-
-const HIRAGANA_LIB = [
-    "あ","い","う","え","お",
-    "か","き","く","け","こ",
-    "さ","し","す","せ","そ",
-    "た","ち","つ","て","と",
-    "な","に","ぬ","ね","の",
-    "は","ひ","ふ","へ","ほ",
-    "ま","み","む","め","も",
-    "や","ゆ","よ",
-    "ら","り","る","れ","ろ",
-    "わ","を","ん",
-    "が","ぎ","ぐ","げ","ご",
-    "ざ","じ","ず","ぜ","ぞ",
-    "だ","ぢ","づ","で","ど",
-    "ば","び","ぶ","べ","ぼ",
-    "ぱ","ぴ","ぷ","ぺ","ぽ",
-    "きゃ","きゅ","きょ",
-    "しゃ","しゅ","しょ",
-    "ちゃ","ちゅ","ちょ",
-    "にゃ","にゅ","にょ",
-    "ひゃ","ひゅ","ひょ",
-    "みゃ","みゅ","みょ",
-    "りゃ","りゅ","りょ",
-    "ぎゃ","ぎゅ","ぎょ",
-    "じゃ","じゅ","じょ",
-    "ぢゃ","ぢゅ","ぢょ",
-    "びゃ","びゅ","びょ",
-    "ぴゃ","ぴゅ","ぴょ"
-];
 
 // 当前使用的歌词库 (默认拼音)
 let languageLibrary = PINYIN_LIB;
@@ -73,28 +12,38 @@ let languageLibrary = PINYIN_LIB;
 // ---------- DOM 元素引用 ----------
 const lyricLibSelect = document.getElementById('lyricLibSelect');
 const libCount = document.getElementById('libCount');
+
+// 滑块
 const shortestNoteSlider = document.getElementById('shortestNote');
 const longestNoteSlider = document.getElementById('longestNote');
 const lowestNoteSlider = document.getElementById('lowestNote');
 const highestNoteSlider = document.getElementById('highestNote');
-const smoothPitchCheck = document.getElementById('smoothPitch');
-const smoothLengthCheck = document.getElementById('smoothLength');
 const bpmSlider = document.getElementById('bpm');
 const noteCountSlider = document.getElementById('noteCount');
 const pauseIntervalSlider = document.getElementById('pauseInterval');
+const rDurationSlider = document.getElementById('rDuration');
+
+// 输入框
+const shortestNoteInput = document.getElementById('shortestNoteInput');
+const longestNoteInput = document.getElementById('longestNoteInput');
+const lowestNoteInput = document.getElementById('lowestNoteInput');
+const highestNoteInput = document.getElementById('highestNoteInput');
+const bpmInput = document.getElementById('bpmInput');
+const noteCountInput = document.getElementById('noteCountInput');
+const pauseIntervalInput = document.getElementById('pauseIntervalInput');
+const rDurationInput = document.getElementById('rDurationInput');
+
+// 音名显示标签
+const lowestNoteName = document.getElementById('lowestNoteName');
+const highestNoteName = document.getElementById('highestNoteName');
+
+// 其他
+const smoothPitchCheck = document.getElementById('smoothPitch');
+const smoothLengthCheck = document.getElementById('smoothLength');
 const generateBtn = document.getElementById('generateBtn');
 const resetBtn = document.getElementById('resetBtn');
 const statusBar = document.getElementById('statusBar');
 const downloadLinksDiv = document.getElementById('downloadLinks');
-
-// 数值显示标签
-const shortestVal = document.getElementById('shortestVal');
-const longestVal = document.getElementById('longestVal');
-const lowestVal = document.getElementById('lowestVal');
-const highestVal = document.getElementById('highestVal');
-const bpmVal = document.getElementById('bpmVal');
-const noteCountVal = document.getElementById('noteCountVal');
-const pauseIntervalVal = document.getElementById('pauseIntervalVal');
 
 // ---------- 工具函数 ----------
 function getNoteName(noteNum) {
@@ -107,26 +56,57 @@ function noteLengthToSeconds(length, bpm) {
     return length * (60 / bpm) / 480;
 }
 
-// 绑定滑块与数值显示
-function bindSlider(slider, valueSpan, formatter) {
-    const update = () => {
-        const val = parseFloat(slider.value);
-        valueSpan.textContent = formatter ? formatter(val) : val;
-    };
-    slider.addEventListener('input', update);
-    update(); // 初始化显示
+function secondsToUSTLength(seconds, bpm) {
+    return Math.round(seconds * bpm * 480 / 60);
 }
 
-// 初始化所有滑块显示
-bindSlider(shortestNoteSlider, shortestVal, v => Math.round(v));
-bindSlider(longestNoteSlider, longestVal, v => Math.round(v));
-bindSlider(lowestNoteSlider, lowestVal, v => getNoteName(Math.round(v)));
-bindSlider(highestNoteSlider, highestVal, v => getNoteName(Math.round(v)));
-bindSlider(bpmSlider, bpmVal, v => Math.round(v));
-bindSlider(noteCountSlider, noteCountVal, v => Math.round(v));
-bindSlider(pauseIntervalSlider, pauseIntervalVal, v => v.toFixed(1));
+// ---------- 双向同步核心 ----------
+function bindSliderAndInput(slider, input, callback) {
+    // 滑块 -> 输入框
+    const fromSlider = () => {
+        const val = parseFloat(slider.value);
+        input.value = val;
+        if (callback) callback(val);
+    };
+    // 输入框 -> 滑块
+    const fromInput = () => {
+        let val = parseFloat(input.value);
+        if (isNaN(val)) return;
+        // 钳位
+        val = Math.min(parseFloat(input.max), Math.max(parseFloat(input.min), val));
+        input.value = val;
+        slider.value = val;
+        if (callback) callback(val);
+    };
 
-// 切换歌词库
+    slider.addEventListener('input', fromSlider);
+    input.addEventListener('input', fromInput);
+    // 失焦时也校正一次
+    input.addEventListener('blur', fromInput);
+
+    // 初始同步
+    fromSlider();
+}
+
+// 音高滑块需要额外显示音名
+function bindPitchSliderAndInput(slider, input, nameSpan) {
+    const updateName = (val) => {
+        nameSpan.textContent = getNoteName(Math.round(val));
+    };
+    bindSliderAndInput(slider, input, updateName);
+}
+
+// ---------- 绑定所有控件 ----------
+bindSliderAndInput(shortestNoteSlider, shortestNoteInput);
+bindSliderAndInput(longestNoteSlider, longestNoteInput);
+bindPitchSliderAndInput(lowestNoteSlider, lowestNoteInput, lowestNoteName);
+bindPitchSliderAndInput(highestNoteSlider, highestNoteInput, highestNoteName);
+bindSliderAndInput(bpmSlider, bpmInput);
+bindSliderAndInput(noteCountSlider, noteCountInput);
+bindSliderAndInput(pauseIntervalSlider, pauseIntervalInput);
+bindSliderAndInput(rDurationSlider, rDurationInput);
+
+// 歌词库切换
 lyricLibSelect.addEventListener('change', () => {
     if (lyricLibSelect.value === 'pinyin') {
         languageLibrary = PINYIN_LIB;
@@ -136,7 +116,6 @@ lyricLibSelect.addEventListener('change', () => {
         libCount.textContent = `共 ${HIRAGANA_LIB.length} 个假名/拗音`;
     }
 });
-// 初始显示数量
 libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
 
 // ---------- 截断正态分布随机数生成 (纯数学实现) ----------
@@ -227,10 +206,12 @@ function generateUST() {
     const bpm = parseFloat(bpmSlider.value);
     const count = parseInt(noteCountSlider.value, 10);
     const pauseInterval = parseFloat(pauseIntervalSlider.value);
+    const rDuration = parseFloat(rDurationSlider.value);
 
     if (shortest >= longest) throw new Error('最短音符长度必须小于最长音符长度');
     if (lowest >= highest) throw new Error('最低音必须小于最高音');
     if (count <= 0) throw new Error('音符数量必须大于0');
+    if (rDuration <= 0) throw new Error('R音符时长必须大于0');
 
     const noteList = [];
     const lyricsSequence = [];
@@ -246,14 +227,13 @@ function generateUST() {
 
     // 生成后续音符
     for (let i = 1; i < count; i++) {
-        // 检查是否插入停顿
         if (currentTime >= pauseInterval) {
-            const pauseLength = Math.round(480 * bpm / 60);
+            const pauseLength = secondsToUSTLength(rDuration, bpm);
             const safeNoteNum = Math.max(lowest, Math.min(highest, 60));
             noteList.push({ length: pauseLength, lyric: 'R', noteNum: safeNoteNum });
             lyricsSequence.push('R');
             currentTime = 0.0;
-            continue; // 跳过本次剩余音符生成，避免连续插入停顿
+            continue;
         }
 
         const prevNote = noteList[noteList.length - 1];
@@ -262,11 +242,9 @@ function generateUST() {
         let newLength, newNoteNum;
 
         if (isAfterRest) {
-            // 停顿后完全随机生成，不受平滑影响，创造新旋律片段
             newLength = Math.floor(Math.random() * (longest - shortest + 1)) + shortest;
             newNoteNum = Math.floor(Math.random() * (highest - lowest + 1)) + lowest;
         } else {
-            // 正常生成：根据平滑开关决定是否基于前一个音符
             if (smoothLength) {
                 const sigmaLength = (longest - shortest) / 3;
                 newLength = truncatedNormalRandom(prevNote.length, sigmaLength, shortest, longest);
@@ -319,7 +297,6 @@ generateBtn.addEventListener('click', () => {
         const ustContent = buildUSTContent(noteList, bpm);
         const lyricsContent = buildLyricsText(lyricsSequence);
 
-        // 创建下载链接
         const createLink = (text, filename, content) => {
             const blob = new Blob([content], { type: 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
@@ -346,30 +323,28 @@ generateBtn.addEventListener('click', () => {
 
 // ---------- 重置按钮 ----------
 resetBtn.addEventListener('click', () => {
+    // 恢复所有滑块默认值
     shortestNoteSlider.value = 240;
     longestNoteSlider.value = 960;
     lowestNoteSlider.value = 60;
     highestNoteSlider.value = 84;
-    smoothPitchCheck.checked = true;
-    smoothLengthCheck.checked = true;
     bpmSlider.value = 120;
     noteCountSlider.value = 16;
     pauseIntervalSlider.value = 10;
+    rDurationSlider.value = 1.0;
+    smoothPitchCheck.checked = true;
+    smoothLengthCheck.checked = true;
     lyricLibSelect.value = 'pinyin';
     languageLibrary = PINYIN_LIB;
     libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
 
-    // 触发滑块显示更新
+    // 触发滑块事件以同步输入框
     [shortestNoteSlider, longestNoteSlider, lowestNoteSlider, highestNoteSlider,
-        bpmSlider, noteCountSlider, pauseIntervalSlider].forEach(s => s.dispatchEvent(new Event('input')));
+        bpmSlider, noteCountSlider, pauseIntervalSlider, rDurationSlider].forEach(s => s.dispatchEvent(new Event('input')));
 
-    statusBar.textContent = '已恢复默认设置 (中文拼音库)';
+    statusBar.textContent = '已恢复默认设置 (中文拼音库，R时长1秒)';
     downloadLinksDiv.style.display = 'none';
     downloadLinksDiv.innerHTML = '';
 });
 
-// 页面加载时触发一次滑块显示
-window.addEventListener('load', () => {
-    [shortestNoteSlider, longestNoteSlider, lowestNoteSlider, highestNoteSlider,
-        bpmSlider, noteCountSlider, pauseIntervalSlider].forEach(s => s.dispatchEvent(new Event('input')));
-});
+// 页面初始化时不需额外操作，因为 bindSliderAndInput 已经执行了初始同步
