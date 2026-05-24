@@ -85,93 +85,104 @@ lyricLibSelect.addEventListener('change', () => {
         libCount.textContent = `共 ${HIRAGANA_LIB.length} 个假名/拗音`;
     }
 });
-libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
+// 根据当前选择初始化歌词库计数
+if (lyricLibSelect.value === 'pinyin') {
+    languageLibrary = PINYIN_LIB;
+    libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
+} else {
+    languageLibrary = HIRAGANA_LIB;
+    libCount.textContent = `共 ${HIRAGANA_LIB.length} 个假名/拗音`;
+}
 
 // ============ 完整的 Shift-JIS 假名编码表 ============
 const SHIFT_JIS_MAP = new Map([
-    ['\u3041', 0x829f],  // 前面是 unicode，后面是 shift-JIS
-    ['\u3042', 0x82a0],
-    ['\u3043', 0x82a1],
-    ['\u3044', 0x82a2],
-    ['\u3045', 0x82a3],
-    ['\u3046', 0x82a4],
-    ['\u3047', 0x82a5],
-    ['\u3048', 0x82a6],
-    ['\u3049', 0x82a7],
-    ['\u304a', 0x82a8],
-    ['\u304b', 0x82a9],
-    ['\u304c', 0x82aa],
-    ['\u304d', 0x82ab],
-    ['\u304e', 0x82ac],
-    ['\u304f', 0x82ad],
-    ['\u3050', 0x82ae],
-    ['\u3051', 0x82af],
-    ['\u3052', 0x82b0],
-    ['\u3053', 0x82b1],
-    ['\u3054', 0x82b2],
-    ['\u3055', 0x82b3],
-    ['\u3056', 0x82b4],
-    ['\u3057', 0x82b5],
-    ['\u3058', 0x82b6],
-    ['\u3059', 0x82b7],
-    ['\u305a', 0x82b8],
-    ['\u305b', 0x82b9],
-    ['\u305c', 0x82ba],
-    ['\u305d', 0x82bb],
-    ['\u305e', 0x82bc],
-    ['\u305f', 0x82bd],
-    ['\u3060', 0x82be],
-    ['\u3061', 0x82bf],
-    ['\u3062', 0x82c0],
-    ['\u3063', 0x82c1],
-    ['\u3064', 0x82c2],
-    ['\u3065', 0x82c3],
-    ['\u3066', 0x82c4],
-    ['\u3067', 0x82c5],
-    ['\u3068', 0x82c6],
-    ['\u3069', 0x82c7],
-    ['\u306a', 0x82c8],
-    ['\u306b', 0x82c9],
-    ['\u306c', 0x82ca],
-    ['\u306d', 0x82cb],
-    ['\u306e', 0x82cc],
-    ['\u306f', 0x82cd],
-    ['\u3070', 0x82ce],
-    ['\u3071', 0x82cf],
-    ['\u3072', 0x82d0],
-    ['\u3073', 0x82d1],
-    ['\u3074', 0x82d2],
-    ['\u3075', 0x82d3],
-    ['\u3076', 0x82d4],
-    ['\u3077', 0x82d5],
-    ['\u3078', 0x82d6],
-    ['\u3079', 0x82d7],
-    ['\u307a', 0x82d8],
-    ['\u307b', 0x82d9],
-    ['\u307c', 0x82da],
-    ['\u307d', 0x82db],
-    ['\u307e', 0x82dc],
-    ['\u307f', 0x82dd],
-    ['\u3080', 0x82de],
-    ['\u3081', 0x82df],
-    ['\u3082', 0x82e0],
-    ['\u3083', 0x82e1],
-    ['\u3084', 0x82e2],
-    ['\u3085', 0x82e3],
-    ['\u3086', 0x82e4],
-    ['\u3087', 0x82e5],
-    ['\u3088', 0x82e6],
-    ['\u3089', 0x82e7],
-    ['\u308a', 0x82e8],
-    ['\u308b', 0x82e9],
-    ['\u308c', 0x82ea],
-    ['\u308d', 0x82eb],
-    ['\u308e', 0x82ec],
-    ['\u308f', 0x82ed],
-    ['\u3090', 0x82ee],
-    ['\u3091', 0x82ef],
-    ['\u3092', 0x82f0],
-    ['\u3093', 0x82f1]
+    // 平假名 (Hiragana)
+    ['\u3041', 0x829f],  // ぁ
+    ['\u3042', 0x82a0],  // あ
+    ['\u3043', 0x82a1],  // ぃ
+    ['\u3044', 0x82a2],  // い
+    ['\u3045', 0x82a3],  // ぅ
+    ['\u3046', 0x82a4],  // う
+    ['\u3047', 0x82a5],  // ぇ
+    ['\u3048', 0x82a6],  // え
+    ['\u3049', 0x82a7],  // ぉ
+    ['\u304a', 0x82a8],  // お
+    ['\u304b', 0x82a9],  // か
+    ['\u304c', 0x82aa],  // が
+    ['\u304d', 0x82ab],  // き
+    ['\u304e', 0x82ac],  // ぎ
+    ['\u304f', 0x82ad],  // く
+    ['\u3050', 0x82ae],  // ぐ
+    ['\u3051', 0x82af],  // け
+    ['\u3052', 0x82b0],  // げ
+    ['\u3053', 0x82b1],  // こ
+    ['\u3054', 0x82b2],  // ご
+    ['\u3055', 0x82b3],  // さ
+    ['\u3056', 0x82b4],  // ざ
+    ['\u3057', 0x82b5],  // し
+    ['\u3058', 0x82b6],  // じ
+    ['\u3059', 0x82b7],  // す
+    ['\u305a', 0x82b8],  // ず
+    ['\u305b', 0x82b9],  // せ
+    ['\u305c', 0x82ba],  // ぜ
+    ['\u305d', 0x82bb],  // そ
+    ['\u305e', 0x82bc],  // ぞ
+    ['\u305f', 0x82bd],  // た
+    ['\u3060', 0x82be],  // だ
+    ['\u3061', 0x82bf],  // ち
+    ['\u3062', 0x82c0],  // ぢ
+    ['\u3063', 0x82c1],  // っ
+    ['\u3064', 0x82c2],  // つ
+    ['\u3065', 0x82c3],  // づ
+    ['\u3066', 0x82c4],  // て
+    ['\u3067', 0x82c5],  // で
+    ['\u3068', 0x82c6],  // と
+    ['\u3069', 0x82c7],  // ど
+    ['\u306a', 0x82c8],  // な
+    ['\u306b', 0x82c9],  // に
+    ['\u306c', 0x82ca],  // ぬ
+    ['\u306d', 0x82cb],  // ね
+    ['\u306e', 0x82cc],  // の
+    ['\u306f', 0x82cd],  // は
+    ['\u3070', 0x82ce],  // ば
+    ['\u3071', 0x82cf],  // ぱ
+    ['\u3072', 0x82d0],  // ひ
+    ['\u3073', 0x82d1],  // び
+    ['\u3074', 0x82d2],  // ぴ
+    ['\u3075', 0x82d3],  // ふ
+    ['\u3076', 0x82d4],  // ぶ
+    ['\u3077', 0x82d5],  // ぷ
+    ['\u3078', 0x82d6],  // へ
+    ['\u3079', 0x82d7],  // べ
+    ['\u307a', 0x82d8],  // ぺ
+    ['\u307b', 0x82d9],  // ほ
+    ['\u307c', 0x82da],  // ぼ
+    ['\u307d', 0x82db],  // ぽ
+    ['\u307e', 0x82dc],  // ま
+    ['\u307f', 0x82dd],  // み
+    ['\u3080', 0x82de],  // む
+    ['\u3081', 0x82df],  // め
+    ['\u3082', 0x82e0],  // も
+    ['\u3083', 0x82e1],  // ゃ
+    ['\u3084', 0x82e2],  // や
+    ['\u3085', 0x82e3],  // ゅ
+    ['\u3086', 0x82e4],  // ゆ
+    ['\u3087', 0x82e5],  // ょ
+    ['\u3088', 0x82e6],  // よ
+    ['\u3089', 0x82e7],  // ら
+    ['\u308a', 0x82e8],  // り
+    ['\u308b', 0x82e9],  // る
+    ['\u308c', 0x82ea],  // れ
+    ['\u308d', 0x82eb],  // ろ
+    ['\u308e', 0x82ec],  // ゎ
+    ['\u308f', 0x82ed],  // わ
+    ['\u3090', 0x82ee],  // ゐ
+    ['\u3091', 0x82ef],  // ゑ
+    ['\u3092', 0x82f0],  // を
+    ['\u3093', 0x82f1],  // ん
+    // 拗音组合 (Yoon) - 这些在 UST 中通常作为两个字符处理
+    // きゃ = き + ゃ, しゃ = し + ゃ, 等等
+    // 由于 Shift-JIS 中没有单独的拗音编码，我们将其分解为基本假名
 ]);
 
 function encodeCharToShiftJIS(ch) {
@@ -181,8 +192,10 @@ function encodeCharToShiftJIS(ch) {
     if (code === 0x0D) return [0x0D];
     const sjis = SHIFT_JIS_MAP.get(ch);
     if (sjis !== undefined) return [(sjis >> 8) & 0xFF, sjis & 0xFF];
-    console.warn('Unmapped character in Shift-JIS:', ch);
-    return [0x3F]; // '?'
+    console.warn('Unmapped character in Shift-JIS:', ch, '(using UTF-8 fallback)');
+    // 对于未映射的字符（如拗音），使用 UTF-8 编码作为备选
+    const encoder = new TextEncoder();
+    return Array.from(encoder.encode(ch));
 }
 
 function encodeToShiftJIS(str) {
@@ -239,10 +252,11 @@ function truncatedNormalRandom(mu, sigma, minVal, maxVal) {
     if (sigma <= 0) return Math.round(Math.max(minVal, Math.min(maxVal, mu)));
     const a = (minVal - mu) / sigma, b = (maxVal - mu) / sigma;
     const phiA = a === -Infinity ? 0 : normalCDF(a), phiB = b === Infinity ? 1 : normalCDF(b);
-    if (phiA >= phiB) return Math.round(mu);
+    if (phiA >= phiB || isNaN(phiA) || isNaN(phiB)) return Math.round(mu);
     const u = phiA + Math.random() * (phiB - phiA);
     const safeU = Math.min(Math.max(u, 1e-16), 1 - 1e-16);
     const x = probit(safeU);
+    if (isNaN(x)) return Math.round(mu);
     let val = mu + sigma * x;
     return Math.round(Math.max(minVal, Math.min(maxVal, val)));
 }
@@ -355,15 +369,26 @@ generateBtn.addEventListener('click', () => {
 });
 
 resetBtn.addEventListener('click', () => {
-    shortestNoteSlider.value = 240; longestNoteSlider.value = 960;
-    lowestNoteSlider.value = 60; highestNoteSlider.value = 84;
-    bpmSlider.value = 120; noteCountSlider.value = 16;
-    pauseIntervalSlider.value = 10; rDurationSlider.value = 1.0;
-    smoothPitchCheck.checked = true; smoothLengthCheck.checked = true;
+    // 重置所有滑块到默认值
+    shortestNoteSlider.value = 240;
+    longestNoteSlider.value = 960;
+    lowestNoteSlider.value = 60;
+    highestNoteSlider.value = 84;
+    bpmSlider.value = 120;
+    noteCountSlider.value = 16;
+    pauseIntervalSlider.value = 10;
+    rDurationSlider.value = 1.0;
+    
+    // 重置复选框
+    smoothPitchCheck.checked = true;
+    smoothLengthCheck.checked = true;
+    
+    // 重置歌词库选择
     lyricLibSelect.value = 'pinyin';
     languageLibrary = PINYIN_LIB;
     libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
 
+    // 触发所有滑块的 input 事件以更新对应的输入框和显示
     [shortestNoteSlider, longestNoteSlider, lowestNoteSlider, highestNoteSlider,
         bpmSlider, noteCountSlider, pauseIntervalSlider, rDurationSlider].forEach(s => s.dispatchEvent(new Event('input')));
 
@@ -372,7 +397,10 @@ resetBtn.addEventListener('click', () => {
     downloadLinksDiv.innerHTML = '';
 });
 
+// 页面加载时，bindSliderAndInput 已经调用了 fromSlider() 进行初始化
+// 因此不需要再次触发 input 事件
 window.addEventListener('load', () => {
-    [shortestNoteSlider, longestNoteSlider, lowestNoteSlider, highestNoteSlider,
-        bpmSlider, noteCountSlider, pauseIntervalSlider, rDurationSlider].forEach(s => s.dispatchEvent(new Event('input')));
+    // bindSliderAndInput 在绑定时已经完成了初始化
+    // 这里只需要确保状态栏显示初始状态
+    statusBar.textContent = '准备就绪';
 });
