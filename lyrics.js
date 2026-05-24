@@ -1,4 +1,4 @@
-// 歌词库：中文拼音
+// 歌词库：中文拼音 (完整音节，无独立小假名)
 const PINYIN_LIB = [
     "a","ai","an","ang","ao","ba","bai","ban","bang","bao","bei","ben","beng","bi","bian","biao","bie",
     "bin","bing","bo","bu","ca","cai","can","cang","cao","ce","cen","ceng","cha","chai","chan","chang",
@@ -28,7 +28,7 @@ const PINYIN_LIB = [
     "zun","zuo"
 ];
 
-// 歌词库：日文平假名/拗音
+// 歌词库：日文平假名/拗音（只包含大假名、浊音、半浊音、拗音组合，不含独立小假名）
 const HIRAGANA_LIB = [
     "あ","い","う","え","お",
     "か","き","く","け","こ",
