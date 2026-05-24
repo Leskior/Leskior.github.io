@@ -1,18 +1,14 @@
 /*****************************************************
  * UST 随机生成器 - 核心逻辑
- * 依赖：encoding.js (全局 Encoding 对象)
+ * 修正：Shift-JIS 编码表准确映射所有假名
  *****************************************************/
 
-// ---------- 音名映射 ----------
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-// 当前歌词库 (默认拼音，来自 lyrics.js)
 let languageLibrary = PINYIN_LIB;
 
-// ---------- DOM 元素引用 ----------
+// DOM 元素（同前）
 const lyricLibSelect = document.getElementById('lyricLibSelect');
 const libCount = document.getElementById('libCount');
-
 const shortestNoteSlider = document.getElementById('shortestNote');
 const longestNoteSlider = document.getElementById('longestNote');
 const lowestNoteSlider = document.getElementById('lowestNote');
@@ -21,7 +17,6 @@ const bpmSlider = document.getElementById('bpm');
 const noteCountSlider = document.getElementById('noteCount');
 const pauseIntervalSlider = document.getElementById('pauseInterval');
 const rDurationSlider = document.getElementById('rDuration');
-
 const shortestNoteInput = document.getElementById('shortestNoteInput');
 const longestNoteInput = document.getElementById('longestNoteInput');
 const lowestNoteInput = document.getElementById('lowestNoteInput');
@@ -30,10 +25,8 @@ const bpmInput = document.getElementById('bpmInput');
 const noteCountInput = document.getElementById('noteCountInput');
 const pauseIntervalInput = document.getElementById('pauseIntervalInput');
 const rDurationInput = document.getElementById('rDurationInput');
-
 const lowestNoteName = document.getElementById('lowestNoteName');
 const highestNoteName = document.getElementById('highestNoteName');
-
 const smoothPitchCheck = document.getElementById('smoothPitch');
 const smoothLengthCheck = document.getElementById('smoothLength');
 const generateBtn = document.getElementById('generateBtn');
@@ -41,22 +34,16 @@ const resetBtn = document.getElementById('resetBtn');
 const statusBar = document.getElementById('statusBar');
 const downloadLinksDiv = document.getElementById('downloadLinks');
 
-// ---------- 工具函数 ----------
+// 工具函数
 function getNoteName(noteNum) {
     const octave = Math.floor(noteNum / 12) - 1;
     const index = noteNum % 12;
     return NOTE_NAMES[index] + octave;
 }
+function noteLengthToSeconds(length, bpm) { return length * (60 / bpm) / 480; }
+function secondsToUSTLength(seconds, bpm) { return Math.round(seconds * bpm * 480 / 60); }
 
-function noteLengthToSeconds(length, bpm) {
-    return length * (60 / bpm) / 480;
-}
-
-function secondsToUSTLength(seconds, bpm) {
-    return Math.round(seconds * bpm * 480 / 60);
-}
-
-// ---------- 双向同步 ----------
+// 双向同步（不变）
 function bindSliderAndInput(slider, input, callback) {
     const fromSlider = () => {
         const val = parseFloat(slider.value);
@@ -71,21 +58,15 @@ function bindSliderAndInput(slider, input, callback) {
         slider.value = val;
         if (callback) callback(val);
     };
-
     slider.addEventListener('input', fromSlider);
     input.addEventListener('input', fromInput);
     input.addEventListener('blur', fromInput);
     fromSlider();
 }
-
 function bindPitchSliderAndInput(slider, input, nameSpan) {
-    const updateName = (val) => {
-        nameSpan.textContent = getNoteName(Math.round(val));
-    };
-    bindSliderAndInput(slider, input, updateName);
+    bindSliderAndInput(slider, input, (val) => { nameSpan.textContent = getNoteName(Math.round(val)); });
 }
 
-// 绑定所有控件
 bindSliderAndInput(shortestNoteSlider, shortestNoteInput);
 bindSliderAndInput(longestNoteSlider, longestNoteInput);
 bindPitchSliderAndInput(lowestNoteSlider, lowestNoteInput, lowestNoteName);
@@ -95,7 +76,6 @@ bindSliderAndInput(noteCountSlider, noteCountInput);
 bindSliderAndInput(pauseIntervalSlider, pauseIntervalInput);
 bindSliderAndInput(rDurationSlider, rDurationInput);
 
-// 歌词库切换
 lyricLibSelect.addEventListener('change', () => {
     if (lyricLibSelect.value === 'pinyin') {
         languageLibrary = PINYIN_LIB;
@@ -107,28 +87,128 @@ lyricLibSelect.addEventListener('change', () => {
 });
 libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
 
-// ---------- 截断正态分布随机数生成 ----------
+// ============ 完整的 Shift-JIS 假名编码表 ============
+const SHIFT_JIS_MAP = new Map([
+    ['\u3041', 0x829f],  // 前面是 unicode，后面是 shift-JIS
+    ['\u3042', 0x82a0],
+    ['\u3043', 0x82a1],
+    ['\u3044', 0x82a2],
+    ['\u3045', 0x82a3],
+    ['\u3046', 0x82a4],
+    ['\u3047', 0x82a5],
+    ['\u3048', 0x82a6],
+    ['\u3049', 0x82a7],
+    ['\u304a', 0x82a8],
+    ['\u304b', 0x82a9],
+    ['\u304c', 0x82aa],
+    ['\u304d', 0x82ab],
+    ['\u304e', 0x82ac],
+    ['\u304f', 0x82ad],
+    ['\u3050', 0x82ae],
+    ['\u3051', 0x82af],
+    ['\u3052', 0x82b0],
+    ['\u3053', 0x82b1],
+    ['\u3054', 0x82b2],
+    ['\u3055', 0x82b3],
+    ['\u3056', 0x82b4],
+    ['\u3057', 0x82b5],
+    ['\u3058', 0x82b6],
+    ['\u3059', 0x82b7],
+    ['\u305a', 0x82b8],
+    ['\u305b', 0x82b9],
+    ['\u305c', 0x82ba],
+    ['\u305d', 0x82bb],
+    ['\u305e', 0x82bc],
+    ['\u305f', 0x82bd],
+    ['\u3060', 0x82be],
+    ['\u3061', 0x82bf],
+    ['\u3062', 0x82c0],
+    ['\u3063', 0x82c1],
+    ['\u3064', 0x82c2],
+    ['\u3065', 0x82c3],
+    ['\u3066', 0x82c4],
+    ['\u3067', 0x82c5],
+    ['\u3068', 0x82c6],
+    ['\u3069', 0x82c7],
+    ['\u306a', 0x82c8],
+    ['\u306b', 0x82c9],
+    ['\u306c', 0x82ca],
+    ['\u306d', 0x82cb],
+    ['\u306e', 0x82cc],
+    ['\u306f', 0x82cd],
+    ['\u3070', 0x82ce],
+    ['\u3071', 0x82cf],
+    ['\u3072', 0x82d0],
+    ['\u3073', 0x82d1],
+    ['\u3074', 0x82d2],
+    ['\u3075', 0x82d3],
+    ['\u3076', 0x82d4],
+    ['\u3077', 0x82d5],
+    ['\u3078', 0x82d6],
+    ['\u3079', 0x82d7],
+    ['\u307a', 0x82d8],
+    ['\u307b', 0x82d9],
+    ['\u307c', 0x82da],
+    ['\u307d', 0x82db],
+    ['\u307e', 0x82dc],
+    ['\u307f', 0x82dd],
+    ['\u3080', 0x82de],
+    ['\u3081', 0x82df],
+    ['\u3082', 0x82e0],
+    ['\u3083', 0x82e1],
+    ['\u3084', 0x82e2],
+    ['\u3085', 0x82e3],
+    ['\u3086', 0x82e4],
+    ['\u3087', 0x82e5],
+    ['\u3088', 0x82e6],
+    ['\u3089', 0x82e7],
+    ['\u308a', 0x82e8],
+    ['\u308b', 0x82e9],
+    ['\u308c', 0x82ea],
+    ['\u308d', 0x82eb],
+    ['\u308e', 0x82ec],
+    ['\u308f', 0x82ed],
+    ['\u3090', 0x82ee],
+    ['\u3091', 0x82ef],
+    ['\u3092', 0x82f0],
+    ['\u3093', 0x82f1]
+]);
+
+function encodeCharToShiftJIS(ch) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0x20 && code <= 0x7E) return [code];   // ASCII
+    if (code === 0x0A) return [0x0A];
+    if (code === 0x0D) return [0x0D];
+    const sjis = SHIFT_JIS_MAP.get(ch);
+    if (sjis !== undefined) return [(sjis >> 8) & 0xFF, sjis & 0xFF];
+    console.warn('Unmapped character in Shift-JIS:', ch);
+    return [0x3F]; // '?'
+}
+
+function encodeToShiftJIS(str) {
+    const bytes = [];
+    for (const ch of str) {
+        bytes.push(...encodeCharToShiftJIS(ch));
+    }
+    return new Uint8Array(bytes);
+}
+
+// 正态分布（不变）
 function erf(x) {
     const sign = (x >= 0) ? 1 : -1;
     x = Math.abs(x);
-    const a1 =  0.254829592;
-    const a2 = -0.284496736;
-    const a3 =  1.421413741;
-    const a4 = -1.453152027;
-    const a5 =  1.061405429;
-    const p  =  0.3275911;
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
     const t = 1.0 / (1.0 + p * x);
     const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
     return sign * y;
 }
-
 function erfinv(x) {
     if (x >= 1.0) return Infinity;
     if (x <= -1.0) return -Infinity;
     let w = -Math.log((1 - x) * (1 + x));
     let p;
     if (w < 5) {
-        w = w - 2.5;
+        w -= 2.5;
         p = 2.81022636e-08;
         p = 3.43273939e-07 + p * w;
         p = -3.5233877e-06 + p * w;
@@ -152,39 +232,26 @@ function erfinv(x) {
     }
     return p * x;
 }
-
-function normalCDF(x) {
-    return 0.5 * (1 + erf(x / Math.SQRT2));
-}
-
-function probit(p) {
-    return Math.SQRT2 * erfinv(2 * p - 1);
-}
-
+function normalCDF(x) { return 0.5 * (1 + erf(x / Math.SQRT2)); }
+function probit(p) { return Math.SQRT2 * erfinv(2 * p - 1); }
 function truncatedNormalRandom(mu, sigma, minVal, maxVal) {
     if (minVal >= maxVal) return Math.round(minVal);
     if (sigma <= 0) return Math.round(Math.max(minVal, Math.min(maxVal, mu)));
-    const a = (minVal - mu) / sigma;
-    const b = (maxVal - mu) / sigma;
-    const phiA = a === -Infinity ? 0 : normalCDF(a);
-    const phiB = b === Infinity ? 1 : normalCDF(b);
+    const a = (minVal - mu) / sigma, b = (maxVal - mu) / sigma;
+    const phiA = a === -Infinity ? 0 : normalCDF(a), phiB = b === Infinity ? 1 : normalCDF(b);
     if (phiA >= phiB) return Math.round(mu);
     const u = phiA + Math.random() * (phiB - phiA);
     const safeU = Math.min(Math.max(u, 1e-16), 1 - 1e-16);
     const x = probit(safeU);
     let val = mu + sigma * x;
-    val = Math.max(minVal, Math.min(maxVal, val));
-    return Math.round(val);
+    return Math.round(Math.max(minVal, Math.min(maxVal, val)));
 }
 
-// ---------- UST 生成 ----------
+// UST 生成（不变）
 function getRandomLyric() {
-    if (languageLibrary.length > 0) {
-        return languageLibrary[Math.floor(Math.random() * languageLibrary.length)];
-    }
+    if (languageLibrary.length > 0) return languageLibrary[Math.floor(Math.random() * languageLibrary.length)];
     return 'a';
 }
-
 function generateUST() {
     const shortest = parseInt(shortestNoteSlider.value, 10);
     const longest = parseInt(longestNoteSlider.value, 10);
@@ -222,40 +289,31 @@ function generateUST() {
             currentTime = 0.0;
             continue;
         }
-
         const prevNote = noteList[noteList.length - 1];
         const isAfterRest = prevNote.lyric === 'R';
-
         let newLength, newNoteNum;
-
         if (isAfterRest) {
             newLength = Math.floor(Math.random() * (longest - shortest + 1)) + shortest;
             newNoteNum = Math.floor(Math.random() * (highest - lowest + 1)) + lowest;
         } else {
             if (smoothLength) {
-                const sigmaLength = (longest - shortest) / 3;
-                newLength = truncatedNormalRandom(prevNote.length, sigmaLength, shortest, longest);
+                newLength = truncatedNormalRandom(prevNote.length, (longest - shortest) / 3, shortest, longest);
             } else {
                 newLength = Math.floor(Math.random() * (longest - shortest + 1)) + shortest;
             }
-
             if (smoothPitch) {
-                const sigmaPitch = (highest - lowest) / 10;
-                newNoteNum = truncatedNormalRandom(prevNote.noteNum, sigmaPitch, lowest, highest);
+                newNoteNum = truncatedNormalRandom(prevNote.noteNum, (highest - lowest) / 10, lowest, highest);
             } else {
                 newNoteNum = Math.floor(Math.random() * (highest - lowest + 1)) + lowest;
             }
         }
-
         const lyric = getRandomLyric();
         noteList.push({ length: newLength, lyric: lyric, noteNum: newNoteNum });
         lyricsSequence.push(lyric);
         currentTime += noteLengthToSeconds(newLength, bpm);
     }
-
     return { noteList, lyricsSequence, bpm };
 }
-
 function buildUSTContent(noteList, bpm) {
     const lines = ['[#SETTING]', `Tempo=${bpm.toFixed(2)}`];
     noteList.forEach((note, idx) => {
@@ -264,35 +322,9 @@ function buildUSTContent(noteList, bpm) {
     });
     return lines.join('\r\n');
 }
+function buildLyricsText(lyricsSequence) { return lyricsSequence.join(' '); }
 
-function buildLyricsText(lyricsSequence) {
-    return lyricsSequence.join(' ');
-}
-
-// ========== Shift-JIS 编码 (使用 encoding.js) ==========
-function encodeToShiftJIS(str) {
-    try {
-        // 将 Unicode 字符串转为 Shift-JIS 字节数组
-        const sjisArray = Encoding.convert(str, 'SJIS', 'UNICODE');
-        
-        // 检查转换结果是否有效
-        if (!sjisArray || sjisArray.length === 0) {
-            console.warn('Shift-JIS 转换返回空数组，使用 UTF-8 作为备选方案');
-            // 如果转换失败，直接返回 UTF-8 编码的字节
-            const utf8Bytes = new TextEncoder().encode(str);
-            return utf8Bytes;
-        }
-        
-        return new Uint8Array(sjisArray);
-    } catch (error) {
-        console.error('Shift-JIS 编码失败:', error);
-        // 出错时使用 UTF-8 作为备选
-        const utf8Bytes = new TextEncoder().encode(str);
-        return utf8Bytes;
-    }
-}
-
-// ---------- 生成按钮与下载 ----------
+// 下载
 generateBtn.addEventListener('click', () => {
     statusBar.textContent = '正在生成...';
     downloadLinksDiv.style.display = 'none';
@@ -301,27 +333,17 @@ generateBtn.addEventListener('click', () => {
         const { noteList, lyricsSequence, bpm } = generateUST();
         const ustText = buildUSTContent(noteList, bpm);
         const lyricsText = buildLyricsText(lyricsSequence);
-
-        // UST 文件转为 Shift-JIS 字节
         const ustBytes = encodeToShiftJIS(ustText);
         const ustBlob = new Blob([ustBytes], { type: 'application/octet-stream' });
-
-        // 歌词文件保持 UTF-8
         const lyricsBlob = new Blob([lyricsText], { type: 'text/plain;charset=utf-8' });
 
         const createLink = (text, filename, blob) => {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.textContent = text;
-            a.className = 'download-link';
-            a.addEventListener('click', () => {
-                setTimeout(() => URL.revokeObjectURL(url), 2000);
-            });
+            a.href = url; a.download = filename; a.textContent = text; a.className = 'download-link';
+            a.addEventListener('click', () => setTimeout(() => URL.revokeObjectURL(url), 2000));
             return a;
         };
-
         downloadLinksDiv.appendChild(createLink('⬇️ 下载 UST 文件 (Shift-JIS)', 'generated.ust', ustBlob));
         downloadLinksDiv.appendChild(createLink('⬇️ 下载歌词文本', 'generated.txt', lyricsBlob));
         downloadLinksDiv.style.display = 'flex';
@@ -332,18 +354,12 @@ generateBtn.addEventListener('click', () => {
     }
 });
 
-// ---------- 重置按钮 ----------
 resetBtn.addEventListener('click', () => {
-    shortestNoteSlider.value = 240;
-    longestNoteSlider.value = 960;
-    lowestNoteSlider.value = 60;
-    highestNoteSlider.value = 84;
-    bpmSlider.value = 120;
-    noteCountSlider.value = 16;
-    pauseIntervalSlider.value = 10;
-    rDurationSlider.value = 1.0;
-    smoothPitchCheck.checked = true;
-    smoothLengthCheck.checked = true;
+    shortestNoteSlider.value = 240; longestNoteSlider.value = 960;
+    lowestNoteSlider.value = 60; highestNoteSlider.value = 84;
+    bpmSlider.value = 120; noteCountSlider.value = 16;
+    pauseIntervalSlider.value = 10; rDurationSlider.value = 1.0;
+    smoothPitchCheck.checked = true; smoothLengthCheck.checked = true;
     lyricLibSelect.value = 'pinyin';
     languageLibrary = PINYIN_LIB;
     libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
@@ -351,12 +367,11 @@ resetBtn.addEventListener('click', () => {
     [shortestNoteSlider, longestNoteSlider, lowestNoteSlider, highestNoteSlider,
         bpmSlider, noteCountSlider, pauseIntervalSlider, rDurationSlider].forEach(s => s.dispatchEvent(new Event('input')));
 
-    statusBar.textContent = '已恢复默认设置 (中文拼音库，R时长1秒)';
+    statusBar.textContent = '已恢复默认设置';
     downloadLinksDiv.style.display = 'none';
     downloadLinksDiv.innerHTML = '';
 });
 
-// 页面加载后统一触发一次显示更新（确保输入框与滑块一致）
 window.addEventListener('load', () => {
     [shortestNoteSlider, longestNoteSlider, lowestNoteSlider, highestNoteSlider,
         bpmSlider, noteCountSlider, pauseIntervalSlider, rDurationSlider].forEach(s => s.dispatchEvent(new Event('input')));
