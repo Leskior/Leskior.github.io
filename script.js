@@ -271,9 +271,25 @@ function buildLyricsText(lyricsSequence) {
 
 // ========== Shift-JIS 编码 (使用 encoding.js) ==========
 function encodeToShiftJIS(str) {
-    // 将 Unicode 字符串转为 Shift-JIS 字节数组
-    const sjisArray = Encoding.convert(str, 'SJIS', 'UNICODE');
-    return new Uint8Array(sjisArray);
+    try {
+        // 将 Unicode 字符串转为 Shift-JIS 字节数组
+        const sjisArray = Encoding.convert(str, 'SJIS', 'UNICODE');
+        
+        // 检查转换结果是否有效
+        if (!sjisArray || sjisArray.length === 0) {
+            console.warn('Shift-JIS 转换返回空数组，使用 UTF-8 作为备选方案');
+            // 如果转换失败，直接返回 UTF-8 编码的字节
+            const utf8Bytes = new TextEncoder().encode(str);
+            return utf8Bytes;
+        }
+        
+        return new Uint8Array(sjisArray);
+    } catch (error) {
+        console.error('Shift-JIS 编码失败:', error);
+        // 出错时使用 UTF-8 作为备选
+        const utf8Bytes = new TextEncoder().encode(str);
+        return utf8Bytes;
+    }
 }
 
 // ---------- 生成按钮与下载 ----------
