@@ -5,6 +5,8 @@
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 let languageLibrary = PINYIN_LIB;
+let customLibrary = [];           // 存放用户从 oto.ini 导入的自定义歌词库
+let customLibLoaded = false;     // 标记是否已成功导入
 
 // DOM 元素（同前）
 const lyricLibSelect = document.getElementById('lyricLibSelect');
@@ -33,8 +35,66 @@ const generateBtn = document.getElementById('generateBtn');
 const resetBtn = document.getElementById('resetBtn');
 const statusBar = document.getElementById('statusBar');
 const downloadLinksDiv = document.getElementById('downloadLinks');
+const customUpload = document.getElementById('customUpload');
+const otoFileInput = document.getElementById('otoFileInput');
+const uploadHint = document.getElementById('uploadHint');
+const uploadResult = document.getElementById('uploadResult');
+const lyricTextarea = document.getElementById('lyricTextarea');
+const previewCount = document.getElementById('previewCount');
+const applyLyricBtn = document.getElementById('applyLyricBtn');
+const revertLyricBtn = document.getElementById('revertLyricBtn');
 
-// 工具函数
+let originalLibrary = [];    // 用于"还原"的快照
+
+// ============ 歌词预览编辑区 ============
+
+/** 将当前歌词库写入 textarea（每行一个） */
+function populateTextarea(library) {
+    lyricTextarea.value = library.join('\n');
+    previewCount.textContent = `${library.length} 行`;
+    originalLibrary = [...library];
+}
+
+/** 从 textarea 读取并解析为数组（过滤空行、trim） */
+function readTextarea() {
+    return lyricTextarea.value
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+}
+
+/** 应用 textarea 编辑到当前歌词库 */
+function applyTextareaEdit() {
+    const newLib = readTextarea();
+    if (newLib.length === 0) {
+        alert('歌词库不能为空！');
+        return;
+    }
+    languageLibrary = newLib;
+    // 如果是自定义模式，同步更新 customLibrary
+    if (lyricLibSelect.value === 'custom') {
+        customLibrary = newLib;
+        customLibLoaded = true;
+    }
+    previewCount.textContent = `${newLib.length} 行`;
+    libCount.textContent = `共 ${newLib.length} 个歌词`;
+    originalLibrary = [...newLib];
+    statusBar.textContent = `已应用 ${newLib.length} 个歌词`;
+}
+
+applyLyricBtn.addEventListener('click', applyTextareaEdit);
+
+revertLyricBtn.addEventListener('click', () => {
+    populateTextarea(originalLibrary);
+    languageLibrary = [...originalLibrary];
+    if (lyricLibSelect.value === 'custom') {
+        customLibrary = [...originalLibrary];
+    }
+    libCount.textContent = `共 ${originalLibrary.length} 个歌词`;
+    statusBar.textContent = '已还原';
+});
+
+// ============ 工具函数 ============
 function getNoteName(noteNum) {
     const octave = Math.floor(noteNum / 12) - 1;
     const index = noteNum % 12;
@@ -80,18 +140,35 @@ lyricLibSelect.addEventListener('change', () => {
     if (lyricLibSelect.value === 'pinyin') {
         languageLibrary = PINYIN_LIB;
         libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
-    } else {
+        customUpload.style.display = 'none';
+        populateTextarea(PINYIN_LIB);
+    } else if (lyricLibSelect.value === 'hiragana') {
         languageLibrary = HIRAGANA_LIB;
         libCount.textContent = `共 ${HIRAGANA_LIB.length} 个假名/拗音`;
+        customUpload.style.display = 'none';
+        populateTextarea(HIRAGANA_LIB);
+    } else if (lyricLibSelect.value === 'custom') {
+        customUpload.style.display = 'block';
+        if (customLibLoaded) {
+            languageLibrary = customLibrary;
+            libCount.textContent = `共 ${customLibrary.length} 个歌词`;
+            populateTextarea(customLibrary);
+        } else {
+            languageLibrary = [];
+            libCount.textContent = '尚未导入';
+            populateTextarea([]);
+        }
     }
 });
 // 根据当前选择初始化歌词库计数
 if (lyricLibSelect.value === 'pinyin') {
     languageLibrary = PINYIN_LIB;
     libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
-} else {
+    populateTextarea(PINYIN_LIB);
+} else if (lyricLibSelect.value === 'hiragana') {
     languageLibrary = HIRAGANA_LIB;
     libCount.textContent = `共 ${HIRAGANA_LIB.length} 个假名/拗音`;
+    populateTextarea(HIRAGANA_LIB);
 }
 
 // ============ 完整的 Shift-JIS 假名编码表 ============
@@ -180,6 +257,93 @@ const SHIFT_JIS_MAP = new Map([
     ['\u3091', 0x82ef],  // ゑ
     ['\u3092', 0x82f0],  // を
     ['\u3093', 0x82f1],  // ん
+    // 片假名 (Katakana) — 修复 oto.ini 中包含片假名时的乱码问题
+    ['\u30a1', 0x8340],  // ァ
+    ['\u30a2', 0x8341],  // ア
+    ['\u30a3', 0x8342],  // ィ
+    ['\u30a4', 0x8343],  // イ
+    ['\u30a5', 0x8344],  // ゥ
+    ['\u30a6', 0x8345],  // ウ
+    ['\u30a7', 0x8346],  // ェ
+    ['\u30a8', 0x8347],  // エ
+    ['\u30a9', 0x8348],  // ォ
+    ['\u30aa', 0x8349],  // オ
+    ['\u30ab', 0x834a],  // カ
+    ['\u30ac', 0x834b],  // ガ
+    ['\u30ad', 0x834c],  // キ
+    ['\u30ae', 0x834d],  // ギ
+    ['\u30af', 0x834e],  // ク
+    ['\u30b0', 0x834f],  // グ
+    ['\u30b1', 0x8350],  // ケ
+    ['\u30b2', 0x8351],  // ゲ
+    ['\u30b3', 0x8352],  // コ
+    ['\u30b4', 0x8353],  // ゴ
+    ['\u30b5', 0x8354],  // サ
+    ['\u30b6', 0x8355],  // ザ
+    ['\u30b7', 0x8356],  // シ
+    ['\u30b8', 0x8357],  // ジ
+    ['\u30b9', 0x8358],  // ス
+    ['\u30ba', 0x8359],  // ズ
+    ['\u30bb', 0x835a],  // セ
+    ['\u30bc', 0x835b],  // ゼ
+    ['\u30bd', 0x835c],  // ソ
+    ['\u30be', 0x835d],  // ゾ
+    ['\u30bf', 0x835e],  // タ
+    ['\u30c0', 0x835f],  // ダ
+    ['\u30c1', 0x8360],  // チ
+    ['\u30c2', 0x8361],  // ヂ
+    ['\u30c3', 0x8362],  // ッ
+    ['\u30c4', 0x8363],  // ツ
+    ['\u30c5', 0x8364],  // ヅ
+    ['\u30c6', 0x8365],  // テ
+    ['\u30c7', 0x8366],  // デ
+    ['\u30c8', 0x8367],  // ト
+    ['\u30c9', 0x8368],  // ド
+    ['\u30ca', 0x8369],  // ナ
+    ['\u30cb', 0x836a],  // ニ
+    ['\u30cc', 0x836b],  // ヌ
+    ['\u30cd', 0x836c],  // ネ
+    ['\u30ce', 0x836d],  // ノ
+    ['\u30cf', 0x836e],  // ハ
+    ['\u30d0', 0x836f],  // バ
+    ['\u30d1', 0x8370],  // パ
+    ['\u30d2', 0x8371],  // ヒ
+    ['\u30d3', 0x8372],  // ビ
+    ['\u30d4', 0x8373],  // ピ
+    ['\u30d5', 0x8374],  // フ
+    ['\u30d6', 0x8375],  // ブ
+    ['\u30d7', 0x8376],  // プ
+    ['\u30d8', 0x8377],  // ヘ
+    ['\u30d9', 0x8378],  // ベ
+    ['\u30da', 0x8379],  // ペ
+    ['\u30db', 0x837a],  // ホ
+    ['\u30dc', 0x837b],  // ボ
+    ['\u30dd', 0x837c],  // ポ
+    ['\u30de', 0x837d],  // マ
+    ['\u30df', 0x837e],  // ミ
+    ['\u30e0', 0x8380],  // ム
+    ['\u30e1', 0x8381],  // メ
+    ['\u30e2', 0x8382],  // モ
+    ['\u30e3', 0x8383],  // ャ
+    ['\u30e4', 0x8384],  // ヤ
+    ['\u30e5', 0x8385],  // ュ
+    ['\u30e6', 0x8386],  // ユ
+    ['\u30e7', 0x8387],  // ョ
+    ['\u30e8', 0x8388],  // ヨ
+    ['\u30e9', 0x8389],  // ラ
+    ['\u30ea', 0x838a],  // リ
+    ['\u30eb', 0x838b],  // ル
+    ['\u30ec', 0x838c],  // レ
+    ['\u30ed', 0x838d],  // ロ
+    ['\u30ee', 0x838e],  // ヮ
+    ['\u30ef', 0x838f],  // ワ
+    ['\u30f0', 0x8390],  // ヰ
+    ['\u30f1', 0x8391],  // ヱ
+    ['\u30f2', 0x8392],  // ヲ
+    ['\u30f3', 0x8393],  // ン
+    ['\u30f4', 0x8394],  // ヴ
+    ['\u30f5', 0x8395],  // ヵ
+    ['\u30f6', 0x8396],  // ヶ
     // 拗音组合 (Yoon) - 这些在 UST 中通常作为两个字符处理
     // きゃ = き + ゃ, しゃ = し + ゃ, 等等
     // 由于 Shift-JIS 中没有单独的拗音编码，我们将其分解为基本假名
@@ -262,6 +426,88 @@ function truncatedNormalRandom(mu, sigma, minVal, maxVal) {
 }
 
 // UST 生成（不变）
+// ============ oto.ini 自定义歌词库导入 ============
+
+/**
+ * 解析 oto.ini 内容，提取所有歌词
+ * oto.ini 格式: filename.wav=歌词,offset,consonant,cutoff,preutterance,overlap
+ * 提取规则: 取每行中 '=' 之后、第一个 ',' 之前的内容作为歌词
+ * 对于 CV 单独音音源，自动去除 "- " 和 "* " 前缀，并去重
+ */
+function parseOtoIni(text) {
+    const lyricSet = new Set();      // 用 Set 自动去重
+    const prefixPattern = /^[-*]\s+/; // 匹配 "- " 或 "* " 前缀
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+        const eqIdx = line.indexOf('=');
+        if (eqIdx === -1) continue;
+        const afterEq = line.substring(eqIdx + 1);
+        const commaIdx = afterEq.indexOf(',');
+        if (commaIdx === -1) continue;
+        let lyric = afterEq.substring(0, commaIdx).trim();
+        if (lyric.length === 0) continue;
+        // 去除 CV 单独音的前缀标记
+        lyric = lyric.replace(prefixPattern, '');
+        lyricSet.add(lyric);
+    }
+    return Array.from(lyricSet);
+}
+
+/**
+ * 处理 oto.ini 文件上传
+ * 使用 Shift-JIS 编码解码文件内容
+ */
+otoFileInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    uploadHint.style.display = 'none';
+    uploadResult.style.display = 'block';
+    uploadResult.textContent = '正在解析...';
+    uploadResult.className = 'upload-result';
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const arrayBuffer = e.target.result;
+            // 用 Shift-JIS 解码
+            const decoder = new TextDecoder('shift_jis');
+            const text = decoder.decode(arrayBuffer);
+
+            customLibrary = parseOtoIni(text);
+
+            if (customLibrary.length === 0) {
+                throw new Error('未找到任何有效歌词');
+            }
+
+            customLibLoaded = true;
+            languageLibrary = customLibrary;
+            libCount.textContent = `共 ${customLibrary.length} 个歌词`;
+            populateTextarea(customLibrary);
+            uploadResult.textContent = `✅ 成功导入 ${customLibrary.length} 个歌词`;
+            uploadResult.className = 'upload-result success';
+            statusBar.textContent = `已从 oto.ini 导入 ${customLibrary.length} 个歌词`;
+        } catch (err) {
+            customLibLoaded = false;
+            languageLibrary = [];
+            libCount.textContent = '导入失败';
+            populateTextarea([]);
+            uploadResult.textContent = '❌ 解析失败: ' + err.message;
+            uploadResult.className = 'upload-result error';
+            statusBar.textContent = 'oto.ini 解析失败: ' + err.message;
+            console.error('oto.ini parse error:', err);
+        }
+    };
+    reader.onerror = () => {
+        uploadResult.textContent = '❌ 文件读取失败';
+        uploadResult.className = 'upload-result error';
+        uploadHint.style.display = 'inline';
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+// ============ 原有歌词获取函数 ============
+
 function getRandomLyric() {
     if (languageLibrary.length > 0) return languageLibrary[Math.floor(Math.random() * languageLibrary.length)];
     return 'a';
@@ -286,6 +532,12 @@ function generateUST() {
     const noteList = [];
     const lyricsSequence = [];
     let currentTime = 0.0;
+
+    // 默认在开头插入一个四分音符 (480 tick) 的 R 休止符
+    const initialRestNoteNum = Math.max(lowest, Math.min(highest, 60));
+    noteList.push({ length: 480, lyric: 'R', noteNum: initialRestNoteNum });
+    lyricsSequence.push('R');
+    currentTime += noteLengthToSeconds(480, bpm);
 
     const avgNoteNum = Math.min(highest, Math.max(lowest, Math.floor((lowest + highest) / 2)));
     const firstLyric = getRandomLyric();
@@ -344,6 +596,10 @@ generateBtn.addEventListener('click', () => {
     downloadLinksDiv.style.display = 'none';
     downloadLinksDiv.innerHTML = '';
     try {
+        // 检查自定义歌词库是否已加载
+        if (lyricLibSelect.value === 'custom' && !customLibLoaded) {
+            throw new Error('请先导入 oto.ini 文件再生成');
+        }
         const { noteList, lyricsSequence, bpm } = generateUST();
         const ustText = buildUSTContent(noteList, bpm);
         const lyricsText = buildLyricsText(lyricsSequence);
@@ -387,6 +643,13 @@ resetBtn.addEventListener('click', () => {
     lyricLibSelect.value = 'pinyin';
     languageLibrary = PINYIN_LIB;
     libCount.textContent = `共 ${PINYIN_LIB.length} 个音节`;
+    customLibLoaded = false;
+    customLibrary = [];
+    customUpload.style.display = 'none';
+    uploadHint.style.display = 'inline';
+    uploadResult.style.display = 'none';
+    otoFileInput.value = '';
+    populateTextarea(PINYIN_LIB);
 
     // 触发所有滑块的 input 事件以更新对应的输入框和显示
     [shortestNoteSlider, longestNoteSlider, lowestNoteSlider, highestNoteSlider,

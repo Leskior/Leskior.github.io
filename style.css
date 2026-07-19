@@ -144,3 +144,82 @@ select {
     cursor: pointer;
     font-size: 0.95em;
 }
+
+/* 自定义歌词库上传区 */
+.custom-upload {
+    margin-top: 10px;
+    padding: 12px 15px;
+    background: #f0f7ff;
+    border: 1px dashed #3498db;
+    border-radius: 6px;
+}
+.upload-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.upload-area input[type="file"] {
+    font-size: 0.9em;
+}
+.upload-hint {
+    font-size: 0.85em;
+    color: #999;
+}
+.upload-result {
+    font-size: 0.9em;
+    font-weight: bold;
+}
+.upload-result.success {
+    color: #27ae60;
+}
+.upload-result.error {
+    color: #e74c3c;
+}
+
+/* 歌词预览编辑区 */
+.lyric-preview {
+    margin-top: 12px;
+}
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.preview-title {
+    font-weight: bold;
+    font-size: 0.95em;
+    color: #34495e;
+}
+.preview-count {
+    font-size: 0.85em;
+    color: #888;
+}
+.lyric-preview textarea {
+    width: 100%;
+    resize: vertical;
+    border: 1px solid #d3d9e0;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: "Consolas", "Microsoft YaHei", monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
+    color: #2c3e50;
+    background: #fff;
+    transition: border-color 0.2s;
+}
+.lyric-preview textarea:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52,152,219,0.15);
+}
+.preview-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+}
+.btn-sm {
+    padding: 5px 14px;
+    font-size: 0.85em;
+}

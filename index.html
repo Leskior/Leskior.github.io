@@ -19,8 +19,30 @@
                 <select id="lyricLibSelect">
                     <option value="pinyin" selected>中文拼音 (完整音节)</option>
                     <option value="hiragana">日文平假名/拗音</option>
+                    <option value="custom">自定义 (oto.ini)</option>
                 </select>
                 <span style="font-size:0.85em; color:#666;" id="libCount">共 413 个音节</span>
+            </div>
+        </div>
+        <!-- 自定义歌词库上传区 -->
+        <div class="custom-upload" id="customUpload" style="display:none;">
+            <div class="param-label">📁 选择 oto.ini:</div>
+            <div class="upload-area">
+                <input type="file" id="otoFileInput" accept=".ini,.txt">
+                <span class="upload-hint" id="uploadHint">请选择 oto.ini 文件 (Shift-JIS 编码)</span>
+                <span class="upload-result" id="uploadResult" style="display:none;"></span>
+            </div>
+        </div>
+        <!-- 歌词预览编辑区 -->
+        <div class="lyric-preview">
+            <div class="preview-header">
+                <span class="preview-title">✏️ 歌词预览 / 编辑</span>
+                <span class="preview-count" id="previewCount">0 行</span>
+            </div>
+            <textarea id="lyricTextarea" rows="6" placeholder="每行一个歌词..."></textarea>
+            <div class="preview-actions">
+                <button class="btn btn-sm" id="applyLyricBtn">✅ 应用修改</button>
+                <button class="btn btn-sm btn-secondary" id="revertLyricBtn">↩️ 还原</button>
             </div>
         </div>
     </div>
