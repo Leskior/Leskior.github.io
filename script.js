@@ -425,7 +425,6 @@ function truncatedNormalRandom(mu, sigma, minVal, maxVal) {
     return Math.round(Math.max(minVal, Math.min(maxVal, val)));
 }
 
-// UST 生成（不变）
 // ============ oto.ini 自定义歌词库导入 ============
 
 /**
@@ -590,6 +589,29 @@ function buildUSTContent(noteList, bpm) {
 }
 function buildLyricsText(lyricsSequence) { return lyricsSequence.join(' '); }
 
+/** 将秒数格式化为可读时间 (h小时m分s秒) */
+function formatDuration(seconds) {
+    if (seconds < 60) return seconds.toFixed(1) + '秒';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.round(seconds % 60);
+    if (h > 0) return `${h}小时${m}分${String(s).padStart(2, '0')}秒`;
+    return `${m}分${String(s).padStart(2, '0')}秒`;
+}
+
+/** 计算音符列表的总时长 (秒) 和非R时长 */
+function calcDurations(noteList, bpm) {
+    let totalTicks = 0, singTicks = 0;
+    for (const note of noteList) {
+        totalTicks += note.length;
+        if (note.lyric !== 'R') singTicks += note.length;
+    }
+    return {
+        total: noteLengthToSeconds(totalTicks, bpm),
+        sing: noteLengthToSeconds(singTicks, bpm)
+    };
+}
+
 // 下载
 generateBtn.addEventListener('click', () => {
     statusBar.textContent = '正在生成...';
@@ -617,7 +639,11 @@ generateBtn.addEventListener('click', () => {
         downloadLinksDiv.appendChild(createLink('⬇️ 下载 UST 文件 (Shift-JIS)', 'generated.ust', ustBlob));
         downloadLinksDiv.appendChild(createLink('⬇️ 下载歌词文本', 'generated.txt', lyricsBlob));
         downloadLinksDiv.style.display = 'flex';
-        statusBar.textContent = `生成成功！共 ${noteList.length} 个音符。`;
+        const durations = calcDurations(noteList, bpm);
+        const rCount = noteList.filter(n => n.lyric === 'R').length;
+        statusBar.innerHTML =
+            `生成成功！共 ${noteList.length} 个音符（含 ${rCount} 个R）<br>` +
+            `⏱ 总时长 <b>${formatDuration(durations.total)}</b> &nbsp;|&nbsp; 去掉R <b>${formatDuration(durations.sing)}</b>`;
     } catch (e) {
         statusBar.textContent = '错误: ' + e.message;
         alert('生成失败: ' + e.message);
