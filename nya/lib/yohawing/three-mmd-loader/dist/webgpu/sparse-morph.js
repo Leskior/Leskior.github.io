@@ -1,0 +1,297 @@
+import { denseMorphProviderSymbol } from "../parser/model/denseMorphProvider.js";
+export function packMmdPositionMorphsToVertexCsr(vertexCount, morphs) {
+    if (!Number.isSafeInteger(vertexCount) || vertexCount < 0) {
+        throw new RangeError(`MMD_POSITION_MORPH_CSR_VERTEX_COUNT_INVALID:${vertexCount}`);
+    }
+    const denseByMorph = new Array(morphs.length);
+    const sparseByMorph = new Array(morphs.length);
+    const typedSparseByMorph = new Array(morphs.length);
+    const entriesPerVertex = new Uint32Array(vertexCount);
+    const seenMorphByVertex = new Uint32Array(vertexCount);
+    for (let morphIndex = 0; morphIndex < morphs.length; morphIndex += 1) {
+        const morph = morphs[morphIndex];
+        if (!morph) {
+            continue;
+        }
+        const dense = resolveDensePositionOffsets(morph, vertexCount, morphIndex);
+        if (dense) {
+            denseByMorph[morphIndex] = dense;
+            countDenseEntries(dense, entriesPerVertex);
+            continue;
+        }
+        const typedSparse = morph[denseMorphProviderSymbol]
+            ?.sparsePositionOffsets;
+        if (typedSparse) {
+            const marker = morphIndex + 1;
+            const hasDuplicates = validateTypedSparsePositionOffsets(typedSparse, vertexCount, morphIndex, marker, seenMorphByVertex);
+            if (!hasDuplicates) {
+                typedSparseByMorph[morphIndex] = typedSparse;
+                countTypedSparseEntries(typedSparse, entriesPerVertex);
+                continue;
+            }
+        }
+        const sparse = normalizeSparsePositionOffsets(morph, vertexCount, morphIndex);
+        if (sparse.size > 0) {
+            sparseByMorph[morphIndex] = sparse;
+            for (const [vertexIndex, position] of sparse) {
+                if (hasNonZeroComponent(position)) {
+                    entriesPerVertex[vertexIndex] = (entriesPerVertex[vertexIndex] ?? 0) + 1;
+                }
+            }
+        }
+    }
+    const rowOffsets = new Uint32Array(vertexCount + 1);
+    for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 1) {
+        rowOffsets[vertexIndex + 1] = (rowOffsets[vertexIndex] ?? 0) + (entriesPerVertex[vertexIndex] ?? 0);
+    }
+    const entryCount = rowOffsets[vertexCount] ?? 0;
+    const morphIndices = new Uint32Array(entryCount);
+    const values = new Float32Array(entryCount * 3);
+    const cursors = rowOffsets.slice(0, vertexCount);
+    for (let morphIndex = 0; morphIndex < morphs.length; morphIndex += 1) {
+        const dense = denseByMorph[morphIndex];
+        if (dense) {
+            writeDenseEntries(dense, morphIndex, cursors, morphIndices, values);
+            continue;
+        }
+        const sparse = sparseByMorph[morphIndex];
+        const typedSparse = typedSparseByMorph[morphIndex];
+        if (typedSparse) {
+            writeTypedSparseEntries(typedSparse, morphIndex, cursors, morphIndices, values);
+            continue;
+        }
+        if (!sparse) {
+            continue;
+        }
+        for (const [vertexIndex, position] of sparse) {
+            if (!hasNonZeroComponent(position)) {
+                continue;
+            }
+            writeEntry(vertexIndex, morphIndex, position[0], position[1], -position[2], cursors, morphIndices, values);
+        }
+    }
+    return { vertexCount, morphCount: morphs.length, rowOffsets, morphIndices, values };
+}
+function resolveDensePositionOffsets(morph, vertexCount, morphIndex) {
+    const provider = morph[denseMorphProviderSymbol];
+    const dense = morph.densePositionOffsets ??
+        (provider?.sparsePositionOffsets ? undefined : provider?.createPositionOffsets(vertexCount));
+    if (!dense) {
+        return undefined;
+    }
+    if (dense.length !== vertexCount * 3) {
+        throw new RangeError(`MMD_POSITION_MORPH_CSR_DENSE_LENGTH_INVALID:${morphIndex}:${dense.length}:${vertexCount * 3}`);
+    }
+    for (let index = 0; index < dense.length; index += 1) {
+        if (!Number.isFinite(dense[index])) {
+            throw new RangeError(`MMD_POSITION_MORPH_CSR_DENSE_VALUE_INVALID:${morphIndex}:${index}`);
+        }
+    }
+    return dense;
+}
+function normalizeSparsePositionOffsets(morph, vertexCount, morphIndex) {
+    const byVertex = new Map();
+    const typedSparse = morph[denseMorphProviderSymbol]
+        ?.sparsePositionOffsets;
+    if (typedSparse) {
+        const { vertexIndices, positions, start, count } = typedSparse;
+        for (let offsetIndex = 0; offsetIndex < count; offsetIndex += 1) {
+            const sourceIndex = start + offsetIndex;
+            const positionIndex = sourceIndex * 3;
+            byVertex.set(vertexIndices[sourceIndex] ?? 0, [
+                positions[positionIndex] ?? 0,
+                positions[positionIndex + 1] ?? 0,
+                positions[positionIndex + 2] ?? 0
+            ]);
+        }
+        return byVertex;
+    }
+    for (let offsetIndex = 0; offsetIndex < (morph.vertexOffsets?.length ?? 0); offsetIndex += 1) {
+        const offset = morph.vertexOffsets?.[offsetIndex];
+        if (!offset) {
+            continue;
+        }
+        if (!Number.isSafeInteger(offset.vertexIndex) || offset.vertexIndex < 0 || offset.vertexIndex >= vertexCount) {
+            throw new RangeError(`MMD_POSITION_MORPH_CSR_VERTEX_INDEX_INVALID:${morphIndex}:${offsetIndex}:${offset.vertexIndex}`);
+        }
+        if (!offset.position.every(Number.isFinite)) {
+            throw new RangeError(`MMD_POSITION_MORPH_CSR_VALUE_INVALID:${morphIndex}:${offsetIndex}`);
+        }
+        byVertex.set(offset.vertexIndex, offset.position);
+    }
+    return byVertex;
+}
+function validateTypedSparsePositionOffsets(sparse, vertexCount, morphIndex, marker, seenMorphByVertex) {
+    const { vertexIndices, positions, start, count } = sparse;
+    if (start + count > vertexIndices.length || positions.length !== vertexIndices.length * 3) {
+        throw new RangeError(`MMD_POSITION_MORPH_CSR_TYPED_SPAN_INVALID:${morphIndex}`);
+    }
+    let hasDuplicates = false;
+    for (let offsetIndex = 0; offsetIndex < count; offsetIndex += 1) {
+        const sourceIndex = start + offsetIndex;
+        const vertexIndex = vertexIndices[sourceIndex] ?? 0;
+        if (vertexIndex >= vertexCount) {
+            throw new RangeError(`MMD_POSITION_MORPH_CSR_VERTEX_INDEX_INVALID:${morphIndex}:${offsetIndex}:${vertexIndex}`);
+        }
+        const positionIndex = sourceIndex * 3;
+        const x = positions[positionIndex] ?? 0;
+        const y = positions[positionIndex + 1] ?? 0;
+        const z = positions[positionIndex + 2] ?? 0;
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+            throw new RangeError(`MMD_POSITION_MORPH_CSR_VALUE_INVALID:${morphIndex}:${offsetIndex}`);
+        }
+        if (seenMorphByVertex[vertexIndex] === marker) {
+            hasDuplicates = true;
+        }
+        else {
+            seenMorphByVertex[vertexIndex] = marker;
+        }
+    }
+    return hasDuplicates;
+}
+function countTypedSparseEntries(sparse, entriesPerVertex) {
+    const { vertexIndices, positions, start, count } = sparse;
+    for (let offsetIndex = 0; offsetIndex < count; offsetIndex += 1) {
+        const sourceIndex = start + offsetIndex;
+        const positionIndex = sourceIndex * 3;
+        if ((positions[positionIndex] ?? 0) !== 0 ||
+            (positions[positionIndex + 1] ?? 0) !== 0 ||
+            (positions[positionIndex + 2] ?? 0) !== 0) {
+            const vertexIndex = vertexIndices[sourceIndex] ?? 0;
+            entriesPerVertex[vertexIndex] = (entriesPerVertex[vertexIndex] ?? 0) + 1;
+        }
+    }
+}
+function writeTypedSparseEntries(sparse, morphIndex, cursors, morphIndices, values) {
+    const { vertexIndices, positions, start, count } = sparse;
+    for (let offsetIndex = 0; offsetIndex < count; offsetIndex += 1) {
+        const sourceIndex = start + offsetIndex;
+        const positionIndex = sourceIndex * 3;
+        const x = positions[positionIndex] ?? 0;
+        const y = positions[positionIndex + 1] ?? 0;
+        const z = positions[positionIndex + 2] ?? 0;
+        if (x !== 0 || y !== 0 || z !== 0) {
+            writeEntry(vertexIndices[sourceIndex] ?? 0, morphIndex, x, y, -z, cursors, morphIndices, values);
+        }
+    }
+}
+function countDenseEntries(dense, entriesPerVertex) {
+    for (let vertexIndex = 0; vertexIndex < entriesPerVertex.length; vertexIndex += 1) {
+        const base = vertexIndex * 3;
+        if ((dense[base] ?? 0) !== 0 || (dense[base + 1] ?? 0) !== 0 || (dense[base + 2] ?? 0) !== 0) {
+            entriesPerVertex[vertexIndex] = (entriesPerVertex[vertexIndex] ?? 0) + 1;
+        }
+    }
+}
+function writeDenseEntries(dense, morphIndex, cursors, morphIndices, values) {
+    for (let vertexIndex = 0; vertexIndex < cursors.length; vertexIndex += 1) {
+        const base = vertexIndex * 3;
+        const x = dense[base] ?? 0;
+        const y = dense[base + 1] ?? 0;
+        const z = dense[base + 2] ?? 0;
+        if (x !== 0 || y !== 0 || z !== 0) {
+            writeEntry(vertexIndex, morphIndex, x, y, z, cursors, morphIndices, values);
+        }
+    }
+}
+function writeEntry(vertexIndex, morphIndex, x, y, z, cursors, morphIndices, values) {
+    const entryIndex = cursors[vertexIndex] ?? 0;
+    cursors[vertexIndex] = entryIndex + 1;
+    morphIndices[entryIndex] = morphIndex;
+    const valueBase = entryIndex * 3;
+    values[valueBase] = x;
+    values[valueBase + 1] = y;
+    values[valueBase + 2] = z;
+}
+function hasNonZeroComponent(position) {
+    return position[0] !== 0 || position[1] !== 0 || position[2] !== 0;
+}
+export function packMmdUvMorphsToVertexCsr(vertexCount, morphs, additionalUvIndex) {
+    if (!Number.isSafeInteger(vertexCount) || vertexCount < 0) {
+        throw new RangeError(`MMD_UV_MORPH_CSR_VERTEX_COUNT_INVALID:${vertexCount}`);
+    }
+    const componentCount = additionalUvIndex === undefined ? 2 : 4;
+    const entriesPerVertex = new Uint32Array(vertexCount);
+    const valuesByMorph = new Array(morphs.length);
+    for (let morphIndex = 0; morphIndex < morphs.length; morphIndex += 1) {
+        const morph = morphs[morphIndex];
+        if (!morph)
+            continue;
+        const values = resolveUvOffsets(morph, vertexCount, morphIndex, additionalUvIndex);
+        if (values.size === 0)
+            continue;
+        valuesByMorph[morphIndex] = values;
+        for (const [vertexIndex, value] of values) {
+            if (hasNonZeroValues(value)) {
+                entriesPerVertex[vertexIndex] = (entriesPerVertex[vertexIndex] ?? 0) + 1;
+            }
+        }
+    }
+    const rowOffsets = new Uint32Array(vertexCount + 1);
+    for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 1) {
+        rowOffsets[vertexIndex + 1] = (rowOffsets[vertexIndex] ?? 0) + (entriesPerVertex[vertexIndex] ?? 0);
+    }
+    const entryCount = rowOffsets[vertexCount] ?? 0;
+    const morphIndices = new Uint32Array(entryCount);
+    const values = new Float32Array(entryCount * componentCount);
+    const cursors = rowOffsets.slice(0, vertexCount);
+    for (let morphIndex = 0; morphIndex < valuesByMorph.length; morphIndex += 1) {
+        for (const [vertexIndex, value] of valuesByMorph[morphIndex] ?? []) {
+            if (!hasNonZeroValues(value))
+                continue;
+            const entryIndex = cursors[vertexIndex] ?? 0;
+            cursors[vertexIndex] = entryIndex + 1;
+            morphIndices[entryIndex] = morphIndex;
+            for (let component = 0; component < componentCount; component += 1) {
+                values[entryIndex * componentCount + component] = value[component] ?? 0;
+            }
+        }
+    }
+    return { vertexCount, morphCount: morphs.length, componentCount, rowOffsets, morphIndices, values };
+}
+function resolveUvOffsets(morph, vertexCount, morphIndex, additionalUvIndex) {
+    const componentCount = additionalUvIndex === undefined ? 2 : 4;
+    const provider = morph[denseMorphProviderSymbol];
+    const dense = additionalUvIndex === undefined
+        ? provider?.createUvOffsets(vertexCount) ?? morph.denseUvOffsets
+        : provider?.createAdditionalUvOffsets(additionalUvIndex, vertexCount) ??
+            morph.denseAdditionalUvOffsets?.[additionalUvIndex];
+    const byVertex = new Map();
+    if (dense) {
+        if (dense.length !== vertexCount * componentCount) {
+            throw new RangeError(`MMD_UV_MORPH_CSR_DENSE_LENGTH_INVALID:${morphIndex}:${dense.length}`);
+        }
+        for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 1) {
+            const base = vertexIndex * componentCount;
+            const x = dense[base] ?? 0;
+            const y = dense[base + 1] ?? 0;
+            const z = componentCount === 4 ? (dense[base + 2] ?? 0) : 0;
+            const w = componentCount === 4 ? (dense[base + 3] ?? 0) : 0;
+            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(w)) {
+                throw new RangeError(`MMD_UV_MORPH_CSR_DENSE_VALUE_INVALID:${morphIndex}:${vertexIndex}`);
+            }
+            if (x !== 0 || y !== 0 || z !== 0 || w !== 0) {
+                byVertex.set(vertexIndex, componentCount === 2 ? [x, y] : [x, y, z, w]);
+            }
+        }
+        return byVertex;
+    }
+    const offsets = additionalUvIndex === undefined ? morph.uvOffsets : morph.additionalUvOffsets;
+    for (let offsetIndex = 0; offsetIndex < (offsets?.length ?? 0); offsetIndex += 1) {
+        const offset = offsets?.[offsetIndex];
+        if (!offset || ("uvIndex" in offset && offset.uvIndex !== additionalUvIndex))
+            continue;
+        if (!Number.isSafeInteger(offset.vertexIndex) || offset.vertexIndex < 0 || offset.vertexIndex >= vertexCount) {
+            throw new RangeError(`MMD_UV_MORPH_CSR_VERTEX_INDEX_INVALID:${morphIndex}:${offsetIndex}`);
+        }
+        const value = Array.from(offset.uv, (component) => component ?? 0).slice(0, componentCount);
+        if (value.length !== componentCount || !value.every(Number.isFinite)) {
+            throw new RangeError(`MMD_UV_MORPH_CSR_VALUE_INVALID:${morphIndex}:${offsetIndex}`);
+        }
+        byVertex.set(offset.vertexIndex, value);
+    }
+    return byVertex;
+}
+function hasNonZeroValues(values) {
+    return values.some((value) => value !== 0);
+}

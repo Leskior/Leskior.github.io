@@ -1,0 +1,2 @@
+import type { Diagnostic, DisplayFrameData, JointData, MaterialInfo, MorphData, RigidBodyData, SkeletonData } from "./modelTypes.js";
+export declare function createModelDiagnostics(materials: readonly MaterialInfo[], morphs: readonly MorphData[], skeleton?: SkeletonData, rigidBodies?: readonly RigidBodyData[], joints?: readonly JointData[], displayFrames?: readonly DisplayFrameData[]): Diagnostic[];

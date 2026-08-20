@@ -1,0 +1,177 @@
+import * as THREE from "three/webgpu";
+import { getShadowMaterial, getShadowRenderObjectFunction, vec3 } from "three/tsl";
+import { MMD_SELF_SHADOW_LAYER } from "../three/shadow.js";
+import { createMmdTslShadowVisibilityNode } from "./shadow-visibility.js";
+/**
+ * Owns the Phase 1 caster-only depth target. The receiver graph is intentionally
+ * not connected here; this pass only proves that the existing caster layer can be
+ * rendered into an independent depth texture without invoking Three's shadow map.
+ */
+export function createMmdTslSelfShadowPass(renderer, light) {
+    const targetWidth = Math.max(1, Math.floor(light.shadow.mapSize.x));
+    const targetHeight = Math.max(1, Math.floor(light.shadow.mapSize.y));
+    const depthTexture = new THREE.DepthTexture(targetWidth, targetHeight);
+    depthTexture.name = "MMD TSL self-shadow depth";
+    depthTexture.compareFunction = null;
+    depthTexture.generateMipmaps = false;
+    const renderTarget = new THREE.RenderTarget(targetWidth, targetHeight, {
+        depthBuffer: true,
+        depthTexture
+    });
+    renderTarget.texture.name = "MMD TSL self-shadow target";
+    renderTarget.texture.generateMipmaps = false;
+    // Reflect the renderer's actual reversed-depth mode into the visibility
+    // graph's occlusion math (see shadow-visibility.ts). Native WebGPU viewer
+    // renderers are created with reversedDepthBuffer: true; baseline WebGL and
+    // TSL forceWebGL stay non-reversed.
+    const reversedDepth = renderer.reversedDepthBuffer === true;
+    const visibilityNode = createMmdTslShadowVisibilityNode(light, depthTexture, { reversedDepth });
+    const shadowModeUniform = visibilityNode.mmdTslShadowMode;
+    const shadowMaterial = getShadowMaterial(light);
+    const shadowRenderObjectFunction = getShadowRenderObjectFunction(renderer, light.shadow, renderer.shadowMap.type, false);
+    const rendererState = { clearColor: new THREE.Color() };
+    const resetRendererAndSceneState = THREE.RendererUtils.resetRendererAndSceneState;
+    const restoreRendererAndSceneState = THREE.RendererUtils.restoreRendererAndSceneState;
+    let disposed = false;
+    function prepareShadowRender(currentRenderer, scene, currentLight) {
+        if (disposed ||
+            currentRenderer !== renderer ||
+            currentLight !== light ||
+            currentLight.castShadow !== true) {
+            return undefined;
+        }
+        const shadowCamera = currentLight.shadow.camera;
+        const originalLayerMask = shadowCamera.layers.mask;
+        const originalShadowMapEnabled = currentRenderer.shadowMap.enabled;
+        if (shadowCamera.coordinateSystem !== currentRenderer.coordinateSystem) {
+            shadowCamera.coordinateSystem = currentRenderer.coordinateSystem;
+            shadowCamera.updateProjectionMatrix();
+        }
+        // Three's common Renderer only flips a camera's projection matrix to the
+        // reversed-depth form lazily, the first time that camera is passed to
+        // renderer.render() (node_modules/three/src/renderers/common/
+        // Renderer.js ~line 1516). Update the flag before LightShadow bakes its
+        // matrix so the first async compile and the first real pass agree.
+        const wantsReversedDepth = currentRenderer.reversedDepthBuffer === true;
+        if (shadowCamera.reversedDepth !== wantsReversedDepth) {
+            shadowCamera._reversedDepth = wantsReversedDepth;
+            shadowCamera.updateProjectionMatrix();
+        }
+        currentLight.shadow.updateMatrices(currentLight);
+        resetRendererAndSceneState(currentRenderer, scene, rendererState);
+        try {
+            currentRenderer.shadowMap.enabled = false;
+            shadowCamera.layers.mask = 1 << MMD_SELF_SHADOW_LAYER;
+            scene.overrideMaterial = shadowMaterial;
+            currentRenderer.setRenderTarget(renderTarget);
+            currentRenderer.setClearColor(0x000000, 0);
+            currentRenderer.setRenderObjectFunction(shadowRenderObjectFunction);
+            let restored = false;
+            return {
+                shadowCamera,
+                restore() {
+                    if (restored) {
+                        return;
+                    }
+                    restored = true;
+                    shadowCamera.layers.mask = originalLayerMask;
+                    currentRenderer.shadowMap.enabled = originalShadowMapEnabled;
+                    restoreRendererAndSceneState(currentRenderer, scene, rendererState);
+                }
+            };
+        }
+        catch (error) {
+            shadowCamera.layers.mask = originalLayerMask;
+            currentRenderer.shadowMap.enabled = originalShadowMapEnabled;
+            restoreRendererAndSceneState(currentRenderer, scene, rendererState);
+            throw error;
+        }
+    }
+    return {
+        renderTarget,
+        depthTexture,
+        visibilityNode,
+        setMode(mode) {
+            const nextMode = mode === 2 ? 2 : 1;
+            if (shadowModeUniform.value === nextMode) {
+                return false;
+            }
+            shadowModeUniform.value = nextMode;
+            return true;
+        },
+        async compileAsync(currentRenderer, scene, currentLight) {
+            if (typeof currentRenderer.compileAsync !== "function") {
+                return false;
+            }
+            const prepared = prepareShadowRender(currentRenderer, scene, currentLight);
+            if (!prepared) {
+                return false;
+            }
+            try {
+                await currentRenderer.compileAsync(scene, prepared.shadowCamera);
+                return true;
+            }
+            finally {
+                prepared.restore();
+            }
+        },
+        render(currentRenderer, scene, currentLight) {
+            const prepared = prepareShadowRender(currentRenderer, scene, currentLight);
+            if (!prepared) {
+                return false;
+            }
+            try {
+                currentRenderer.render(scene, prepared.shadowCamera);
+                return true;
+            }
+            finally {
+                prepared.restore();
+            }
+        },
+        setReceiverVisibilityDebug(root, enabled, sampleTarget = true) {
+            let changed = false;
+            root.traverse((object) => {
+                const materialValue = object.material;
+                const materials = materialValue
+                    ? (Array.isArray(materialValue) ? materialValue : [materialValue])
+                    : [];
+                for (let index = 0; index < materials.length; index += 1) {
+                    const material = materials[index];
+                    const metadata = material?.userData?.mmdMaterial;
+                    if (!material?.userData?.mmdTslMaterialUniforms || metadata?.flags?.selfShadow !== true) {
+                        continue;
+                    }
+                    const key = "mmdTslDedicatedShadowVisibilityDebug";
+                    const saved = material.userData[key];
+                    if (enabled) {
+                        if (!saved) {
+                            material.userData[key] = {
+                                colorNode: material.colorNode,
+                                lights: material.lights
+                            };
+                        }
+                        material.colorNode = sampleTarget ? vec3(visibilityNode) : vec3(1, 1, 1);
+                        material.lights = false;
+                        material.needsUpdate = true;
+                        changed = true;
+                    }
+                    else if (saved) {
+                        material.colorNode = saved.colorNode;
+                        material.lights = saved.lights;
+                        delete material.userData[key];
+                        material.needsUpdate = true;
+                        changed = true;
+                    }
+                }
+            });
+            return changed;
+        },
+        dispose() {
+            if (disposed) {
+                return;
+            }
+            disposed = true;
+            renderTarget.dispose();
+        }
+    };
+}

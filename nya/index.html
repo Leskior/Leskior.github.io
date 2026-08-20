@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MMD Model Viewer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      background: #e4f4ed;
+      color: #18332a;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; margin: 0; }
+
+    body { overflow: hidden; }
+
+    #app { position: relative; width: 100%; height: 100%; }
+
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+
+    canvas:active { cursor: grabbing; }
+
+    .toolbar {
+      position: absolute;
+      z-index: 1;
+      top: 16px;
+      left: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid #3a4654;
+      border-radius: 8px;
+      background: #18212bd9;
+      backdrop-filter: blur(12px);
+    }
+
+    .toolbar label { cursor: pointer; }
+
+    .toolbar input { max-width: 220px; }
+
+    #status { color: #477064; font-size: 14px; }
+
+    .toolbar small { color: #6c8b80; }
+
+    .color-panel {
+      position: absolute;
+      z-index: 1;
+      top: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 220px;
+      padding: 12px;
+      border: 1px solid #3a4654;
+      border-radius: 8px;
+      background: #18212bd9;
+      backdrop-filter: blur(12px);
+    }
+
+    .color-panel .panel-title { font-size: 12px; color: #9caec2; letter-spacing: 0.5px; }
+
+    .color-panel label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .color-panel input[type=range] { flex: 1; accent-color: #2f9d7b; }
+
+    .color-panel button {
+      padding: 6px 8px;
+      border: 1px solid #6c9b8a;
+      border-radius: 6px;
+      background: #d4eee3;
+      color: #18332a;
+      cursor: pointer;
+    }
+
+    .color-panel button.active { background: #2f9d7b; color: #fff; }
+
+    .toolbar button {
+      padding: 7px 10px;
+      border: 1px solid #6c9b8a;
+      border-radius: 6px;
+      background: #d4eee3;
+      color: #18332a;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <div class="toolbar">
+      <label>
+        Open PMX
+        <input id="model-file" type="file" accept=".pmx">
+      </label>
+      <label>
+        Open Folder
+        <input id="folder-files" type="file" webkitdirectory multiple>
+      </label>
+      <label>
+        Open VMD
+        <input id="motion-file" type="file" accept=".vmd,.vpd">
+      </label>
+      <button id="mode-toggle" type="button">Skeleton mode</button>
+      <span id="status">Loading model...</span>
+      <small>Drag: orbit · Wheel: zoom · Shift + middle: pan</small>
+    </div>
+
+    <div class="color-panel">
+      <div class="panel-title">Color / Ink</div>
+      <label>Saturation <input id="sat" type="range" min="0" max="2" step="0.01" value="1"></label>
+      <label>Contrast <input id="con" type="range" min="0.5" max="1.6" step="0.01" value="1"></label>
+      <label>Brightness <input id="bri" type="range" min="-0.4" max="0.4" step="0.01" value="0"></label>
+      <label>Hue <input id="hue" type="range" min="-180" max="180" step="1" value="0"></label>
+      <button id="ink-toggle" type="button">Ink style</button>
+      <button id="reset-color" type="button">Reset</button>
+    </div>
+  </main>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./lib/three-yohawing/three.module.js",
+        "@yohawing/three-mmd-loader/": "./lib/yohawing/three-mmd-loader/dist/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import {
+      ThreeMmdLoader,
+      createMmdTextureMapFromFiles,
+      findMmdModelFiles
+    } from './lib/yohawing/three-mmd-loader/dist/three/index.js';
+    import { EffectComposer } from './lib/three-yohawing/examples/jsm/postprocessing/EffectComposer.js';
+    import { RenderPass } from './lib/three-yohawing/examples/jsm/postprocessing/RenderPass.js';
+    import { ShaderPass } from './lib/three-yohawing/examples/jsm/postprocessing/ShaderPass.js';
+    import { OutputPass } from './lib/three-yohawing/examples/jsm/postprocessing/OutputPass.js';
+
+    const app = document.querySelector('#app');
+    const status = document.querySelector('#status');
+    const fileInput = document.querySelector('#model-file');
+    const folderInput = document.querySelector('#folder-files');
+    const motionInput = document.querySelector('#motion-file');
+    const modeToggle = document.querySelector('#mode-toggle');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      logarithmicDepthBuffer: true,
+      preserveDrawingBuffer: true,
+      powerPreference: 'high-performance'
+    });
+    const clock = new THREE.Clock();
+    let loader = new ThreeMmdLoader();
+    let currentModel = null;
+    let animationStartTime = 0;
+    let hasAnimation = false;
+    const orbitTarget = new THREE.Vector3();
+    let orbitDistance = 8;
+    let orbitMinDistance = 0.5;
+    let orbitMaxDistance = 80;
+    let orbitModelRadius = 1;
+    let orbitAzimuth = 0;
+    let orbitPolar = Math.PI * 0.5;
+    let pointerState = null;
+    let editMode = false;
+    let skeletonHelper = null;
+    let boneControls = [];
+    let selectedBone = null;
+    let boneDragState = null;
+    const boneRaycaster = new THREE.Raycaster();
+    const bonePointer = new THREE.Vector2();
+    const boneDragPoint = new THREE.Vector3();
+    const boneDragNormal = new THREE.Vector3();
+    const boneDragPlane = new THREE.Plane();
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Background must be linear so OutputPass's sRGB conversion restores the mint color.
+    const backgroundMint = new THREE.Color(0xe4f4ed);
+    backgroundMint.convertSRGBToLinear();
+    renderer.setClearColor(backgroundMint);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.toneMappingExposure = 1;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    app.append(renderer.domElement);
+
+    // ---- Post-processing: color / ink adjustments ----
+    const ColorAdjustShader = {
+      uniforms: {
+        tDiffuse: { value: null },
+        uSaturation: { value: 1.0 },
+        uContrast: { value: 1.0 },
+        uBrightness: { value: 0.0 },
+        uHueShift: { value: 0.0 },
+        uInk: { value: 0.0 }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uSaturation;
+        uniform float uContrast;
+        uniform float uBrightness;
+        uniform float uHueShift;
+        uniform float uInk;
+        varying vec2 vUv;
+
+        vec3 hueShift(vec3 c, float deg) {
+          float rad = radians(deg);
+          float s = sin(rad), co = cos(rad);
+          mat3 m = mat3(
+            0.299 + 0.701*co + 0.168*s, 0.587 - 0.587*co + 0.330*s, 0.114 - 0.114*co - 0.497*s,
+            0.299 - 0.299*co - 0.328*s, 0.587 + 0.413*co + 0.035*s, 0.114 - 0.114*co + 0.292*s,
+            0.299 - 0.300*co + 1.250*s, 0.587 - 0.588*co - 1.050*s, 0.114 + 0.886*co - 0.203*s
+          );
+          return clamp(c * m, 0.0, 1.0);
+        }
+
+        void main() {
+          vec4 tex = texture2D(tDiffuse, vUv);
+          vec3 c = tex.rgb + uBrightness;
+          float luma = dot(c, vec3(0.299, 0.587, 0.114));
+          c = mix(vec3(luma), c, uSaturation);
+          c = (c - 0.5) * uContrast + 0.5;
+          c = hueShift(c, uHueShift);
+          if (uInk > 0.5) {
+            float ink = dot(c, vec3(0.299, 0.587, 0.114));
+            ink = smoothstep(0.05, 0.85, ink);
+            vec3 wash = vec3(ink);
+            wash = mix(vec3(0.965, 0.955, 0.91), wash, 0.94);
+            c = wash;
+          }
+          gl_FragColor = vec4(clamp(c, 0.0, 1.0), tex.a);
+        }
+      `
+    };
+
+    const composer = new EffectComposer(renderer);
+    // Re-enable MSAA antialiasing lost by rendering to the composer's targets.
+    composer.renderTarget1.samples = 4;
+    composer.renderTarget2.samples = 4;
+    composer.addPass(new RenderPass(scene, camera));
+    const colorPass = new ShaderPass(ColorAdjustShader);
+    composer.addPass(colorPass);
+    // OutputPass applies tone mapping + sRGB conversion (matches renderer settings).
+    composer.addPass(new OutputPass());
+
+    const satInput = document.querySelector('#sat');
+    const conInput = document.querySelector('#con');
+    const briInput = document.querySelector('#bri');
+    const hueInput = document.querySelector('#hue');
+    const inkToggle = document.querySelector('#ink-toggle');
+    const resetButton = document.querySelector('#reset-color');
+    let inkEnabled = false;
+
+    function updateColorUniforms() {
+      const u = colorPass.uniforms;
+      u.uSaturation.value = parseFloat(satInput.value);
+      u.uContrast.value = parseFloat(conInput.value);
+      u.uBrightness.value = parseFloat(briInput.value);
+      u.uHueShift.value = parseFloat(hueInput.value);
+      u.uInk.value = inkEnabled ? 1 : 0;
+    }
+
+    function resetColorDefaults() {
+      satInput.value = '1';
+      conInput.value = '1';
+      briInput.value = '0';
+      hueInput.value = '0';
+      inkEnabled = false;
+      inkToggle.classList.remove('active');
+      updateColorUniforms();
+    }
+
+    [satInput, conInput, briInput, hueInput].forEach((input) => {
+      input.addEventListener('input', updateColorUniforms);
+    });
+
+    inkToggle.addEventListener('click', () => {
+      inkEnabled = !inkEnabled;
+      inkToggle.classList.toggle('active', inkEnabled);
+      updateColorUniforms();
+    });
+
+    resetButton.addEventListener('click', resetColorDefaults);
+
+    function updateCamera() {
+      const sinPolar = Math.sin(orbitPolar);
+      camera.position.set(
+        orbitTarget.x + orbitDistance * sinPolar * Math.sin(orbitAzimuth),
+        orbitTarget.y + orbitDistance * Math.cos(orbitPolar),
+        orbitTarget.z + orbitDistance * sinPolar * Math.cos(orbitAzimuth)
+      );
+      camera.near = Math.max(orbitModelRadius * 0.002, 0.01);
+      camera.far = Math.max(orbitDistance + orbitModelRadius * 4, 100);
+      camera.updateProjectionMatrix();
+      camera.lookAt(orbitTarget);
+      camera.updateMatrixWorld(true);
+    }
+
+    scene.add(new THREE.HemisphereLight(0xd8e7ff, 0x26303b, 1.35));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.25);
+    keyLight.position.set(3, 8, 5);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(2048, 2048);
+    scene.add(keyLight);
+
+    function applyMaterialLook(root) {
+      root.traverse((object) => {
+        if (!object.isMesh) return;
+        object.castShadow = true;
+        object.receiveShadow = true;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => {
+          if (!material) return;
+          const mmdMaterial = material.userData.mmdMaterial;
+          if (!mmdMaterial) return;
+          // Soft matte look: diffuse-dominant shading with a broad, dim highlight.
+          // A low specularPower makes the highlight wide and soft (like a matte
+          // surface) instead of a sharp, glossy plastic reflection.
+          const baseSpecular = mmdMaterial.specular || [0.8, 0.8, 0.8];
+          const basePower = mmdMaterial.specularPower ?? 40;
+          const softPower = Math.max(basePower * 0.12, 6);
+          const softSpecular = baseSpecular.map((value) => value * 0.25);
+          const state = material.userData.mmdMaterialState;
+          if (state) {
+            state.specular = softSpecular;
+            state.specularPower = softPower;
+          }
+          const shader = material.userData.mmdMaterialFactorShader;
+          const specularUniform = shader?.uniforms?.mmdSpecularPower;
+          if (specularUniform) specularUniform.value = softPower;
+          const specularColor = shader?.uniforms?.mmdSpecularColor?.value;
+          if (specularColor instanceof THREE.Color) {
+            specularColor.setRGB(softSpecular[0], softSpecular[1], softSpecular[2]);
+          }
+        });
+      });
+    }
+
+    function setBonePointer(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      bonePointer.set(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      boneRaycaster.setFromCamera(bonePointer, camera);
+    }
+
+    function updateBoneControls() {
+      boneControls.forEach((control) => {
+        const bone = control.userData.bone;
+        bone.getWorldPosition(control.position);
+        control.visible = editMode;
+        control.material.color.set(bone === selectedBone ? 0xff6b4a : 0x2f9d7b);
+      });
+      if (skeletonHelper) skeletonHelper.visible = editMode;
+    }
+
+    function destroySkeletonEditor() {
+      if (skeletonHelper) {
+        scene.remove(skeletonHelper);
+        skeletonHelper.geometry.dispose();
+        skeletonHelper.material.dispose();
+        skeletonHelper = null;
+      }
+      boneControls.forEach((control) => {
+        scene.remove(control);
+        control.geometry.dispose();
+        control.material.dispose();
+      });
+      boneControls = [];
+      selectedBone = null;
+      boneDragState = null;
+    }
+
+    function createSkeletonEditor(model) {
+      destroySkeletonEditor();
+      skeletonHelper = new THREE.SkeletonHelper(model.mesh);
+      skeletonHelper.material = new THREE.LineBasicMaterial({
+        color: 0x2f9d7b,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0.9
+      });
+      scene.add(skeletonHelper);
+      const pointSize = Math.max(orbitModelRadius * 0.018, 0.012);
+      model.mesh.skeleton.bones.forEach((bone) => {
+        const control = new THREE.Mesh(
+          new THREE.SphereGeometry(pointSize, 12, 8),
+          new THREE.MeshBasicMaterial({
+            color: 0x2f9d7b,
+            depthTest: false,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.95
+          })
+        );
+        control.userData.bone = bone;
+        control.renderOrder = 100;
+        scene.add(control);
+        boneControls.push(control);
+      });
+      updateBoneControls();
+    }
+
+    function setEditMode(nextMode) {
+      editMode = nextMode;
+      modeToggle.textContent = editMode ? 'View mode' : 'Skeleton mode';
+      if (editMode && currentModel) {
+        createSkeletonEditor(currentModel);
+      } else {
+        destroySkeletonEditor();
+      }
+      updateBoneControls();
+    }
+
+    function refitForAspect() {
+      if (orbitModelRadius <= 0) return;
+      const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+      const horizontalFov = 2 * Math.atan(Math.tan(verticalFov * 0.5) * camera.aspect);
+      const limitingFov = Math.min(verticalFov, horizontalFov);
+      orbitDistance = (orbitModelRadius / Math.sin(limitingFov * 0.5)) * 1.18;
+      orbitMinDistance = Math.max(orbitModelRadius * 0.015, 0.01);
+      orbitMaxDistance = Math.max(orbitDistance * 8, 20);
+      updateCamera();
+    }
+
+    function resize() {
+      const width = app.clientWidth;
+      const height = app.clientHeight;
+      if (width === 0 || height === 0) return;
+      camera.aspect = width / height;
+      renderer.setSize(width, height, false);
+      composer.setSize(width, height);
+      refitForAspect();
+    }
+
+    function frameModel(model) {
+      model.root.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(model.root);
+      const center = bounds.getCenter(new THREE.Vector3());
+      const size = bounds.getSize(new THREE.Vector3());
+      orbitModelRadius = Math.max(size.x, size.y, size.z) * 0.5;
+      orbitTarget.copy(center);
+      orbitAzimuth = 0;
+      orbitPolar = Math.PI * 0.5;
+      refitForAspect();
+    }
+
+    renderer.domElement.addEventListener('contextmenu', (event) => event.preventDefault());
+
+    renderer.domElement.addEventListener('pointerdown', (event) => {
+      if (editMode && currentModel) {
+        setBonePointer(event);
+        const hit = boneRaycaster.intersectObjects(boneControls, false)[0];
+        if (hit) {
+          selectedBone = hit.object.userData.bone;
+          camera.getWorldDirection(boneDragNormal);
+          selectedBone.getWorldPosition(boneDragPoint);
+          boneDragPlane.setFromNormalAndCoplanarPoint(boneDragNormal, boneDragPoint);
+          boneDragState = { pointerId: event.pointerId, bone: selectedBone };
+          renderer.domElement.setPointerCapture(event.pointerId);
+          updateBoneControls();
+          return;
+        }
+      }
+      if (event.button !== 0 && event.button !== 1) return;
+      pointerState = {
+        x: event.clientX,
+        y: event.clientY,
+        pan: event.button === 1 && event.shiftKey
+      };
+      renderer.domElement.setPointerCapture(event.pointerId);
+    });
+
+    renderer.domElement.addEventListener('pointermove', (event) => {
+      if (boneDragState) {
+        setBonePointer(event);
+        if (boneRaycaster.ray.intersectPlane(boneDragPlane, boneDragPoint)) {
+          const parent = boneDragState.bone.parent;
+          if (parent) {
+            parent.worldToLocal(boneDragPoint);
+            boneDragState.bone.position.copy(boneDragPoint);
+            boneDragState.bone.updateMatrixWorld(true);
+            updateBoneControls();
+          }
+        }
+        return;
+      }
+      if (!pointerState) return;
+      const deltaX = event.clientX - pointerState.x;
+      const deltaY = event.clientY - pointerState.y;
+      pointerState.x = event.clientX;
+      pointerState.y = event.clientY;
+
+      if (pointerState.pan) {
+        const panScale = orbitDistance * 0.0015;
+        const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+        const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+        orbitTarget.addScaledVector(right, -deltaX * panScale);
+        orbitTarget.addScaledVector(up, deltaY * panScale);
+      } else {
+        orbitAzimuth -= deltaX * 0.008;
+        orbitPolar = THREE.MathUtils.clamp(orbitPolar - deltaY * 0.008, 0.12, Math.PI - 0.12);
+      }
+      updateCamera();
+    });
+
+    renderer.domElement.addEventListener('pointerup', (event) => {
+      if (boneDragState) {
+        boneDragState = null;
+        renderer.domElement.releasePointerCapture(event.pointerId);
+        return;
+      }
+      pointerState = null;
+      renderer.domElement.releasePointerCapture(event.pointerId);
+    });
+
+    renderer.domElement.addEventListener('pointercancel', () => {
+      pointerState = null;
+      boneDragState = null;
+    });
+
+    modeToggle.addEventListener('click', () => setEditMode(!editMode));
+
+    renderer.domElement.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      orbitDistance = THREE.MathUtils.clamp(
+        orbitDistance * Math.exp(event.deltaY * 0.001),
+        orbitMinDistance,
+        orbitMaxDistance
+      );
+      updateCamera();
+    }, { passive: false });
+
+    async function openModel(source, label) {
+      status.textContent = `Loading ${label}...`;
+      const model = await loader.loadModel(source);
+      if (currentModel) scene.remove(currentModel.root);
+      currentModel = model;
+      scene.add(model.root);
+      applyMaterialLook(model.root);
+      frameModel(model);
+      if (editMode) createSkeletonEditor(model);
+      animationStartTime = clock.getElapsedTime();
+      hasAnimation = false;
+      status.textContent = `Loaded ${label}`;
+    }
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      try {
+        loader = new ThreeMmdLoader();
+        await openModel(file, file.name);
+      } catch (error) {
+        console.error(error);
+        status.textContent = `Load failed: ${error.message}`;
+      }
+    });
+
+    folderInput.addEventListener('change', async () => {
+      const files = [...folderInput.files];
+      const modelFile = findMmdModelFiles(files)[0];
+      if (!modelFile) {
+        status.textContent = 'No PMX or PMD model found in folder';
+        return;
+      }
+      try {
+        loader = new ThreeMmdLoader({
+          textureMap: createMmdTextureMapFromFiles(files, modelFile)
+        });
+        await openModel(modelFile, modelFile.webkitRelativePath || modelFile.name);
+      } catch (error) {
+        console.error(error);
+        status.textContent = `Folder load failed: ${error.message}`;
+      }
+    });
+
+    motionInput.addEventListener('change', async () => {
+      const file = motionInput.files[0];
+      if (!file || !currentModel) {
+        status.textContent = currentModel ? 'Choose a VMD or VPD file' : 'Load a model before loading motion';
+        return;
+      }
+      try {
+        status.textContent = `Loading motion ${file.name}...`;
+        const animation = file.name.toLowerCase().endsWith('.vpd')
+          ? await loader.loadPoseAnimation(file, file.name)
+          : await loader.loadAnimation(file);
+        currentModel.setAnimation(animation);
+        hasAnimation = true;
+        animationStartTime = clock.getElapsedTime();
+        status.textContent = `Playing ${file.name}`;
+      } catch (error) {
+        console.error(error);
+        status.textContent = `Motion load failed: ${error.message}`;
+      }
+    });
+
+    window.addEventListener('resize', resize);
+    resize();
+    openModel('./assets/appearance-miku/Appearance%20Miku.pmx', 'Appearance Miku.pmx')
+      .catch((error) => {
+        console.error(error);
+        status.textContent = `Load failed: ${error.message}`;
+      });
+
+    renderer.setAnimationLoop(() => {
+      if (currentModel) {
+        if (!editMode && hasAnimation) {
+          currentModel.update(clock.getElapsedTime() - animationStartTime);
+          applyMaterialLook(currentModel.root);
+        }
+        updateBoneControls();
+      }
+      composer.render();
+    });
+  </script>
+</body>
+</html>

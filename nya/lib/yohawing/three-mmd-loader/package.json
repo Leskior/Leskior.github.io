@@ -1,0 +1,141 @@
+{
+  "name": "@yohawing/three-mmd-loader",
+  "version": "0.8.2",
+  "description": "TypeScript-first ESM library for Three.js MMD loading and playback.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yohawing/three-mmd-loader.git"
+  },
+  "homepage": "https://github.com/yohawing/three-mmd-loader#readme",
+  "bugs": {
+    "url": "https://github.com/yohawing/three-mmd-loader/issues"
+  },
+  "keywords": [
+    "three",
+    "threejs",
+    "mmd",
+    "mikumikudance",
+    "pmx",
+    "pmd",
+    "vmd",
+    "vpd",
+    "loader",
+    "animation"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./parser": {
+      "types": "./dist/parser/index.d.ts",
+      "default": "./dist/parser/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "default": "./dist/runtime/index.js"
+    },
+    "./three": {
+      "types": "./dist/three/index.d.ts",
+      "default": "./dist/three/index.js"
+    },
+    "./webgpu": {
+      "types": "./dist/webgpu/index.d.ts",
+      "default": "./dist/webgpu/index.js"
+    },
+    "./physics": {
+      "types": "./dist/physics/index.d.ts",
+      "default": "./dist/physics/index.js"
+    },
+    "./worker": {
+      "types": "./dist/worker/index.d.ts",
+      "default": "./dist/worker/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json && node scripts/copy-mmd-assets.mjs && node scripts/copy-mmd-anim-wasm.mjs && node scripts/copy-bullet-mmd.mjs",
+    "build:mmd-anim": "node scripts/build-mmd-anim-wasm.mjs",
+    "build:bullet": "npm run build:bullet:mmd",
+    "build:bullet:mmd": "node scripts/build-bullet-mmd-wasm.mjs",
+    "compare:runtime:js": "node scripts/compare-runtime-js.mjs",
+    "bench:runtime:worker": "node scripts/bench-runtime-worker.mjs",
+    "bench:runtime:worker:browser": "node scripts/bench-runtime-worker-browser.mjs",
+    "smoke:bullet:mmd": "node scripts/smoke-bullet-mmd.mjs",
+    "bench:runtime:js": "node scripts/bench-runtime-js.mjs",
+    "bench:wasm:perf": "node scripts/bench_wasm_perf.mjs",
+    "dev": "npm run build && node scripts/serve-example-viewer.mjs",
+    "example:viewer": "npm run dev",
+    "check:fixtures": "node scripts/check-fixtures.mjs",
+    "check:fixtures:physics": "node scripts/check-fixtures.mjs --physics",
+    "check:fixtures:local": "node scripts/check-fixtures.mjs --no-three test/fixtures/fixtures.local.json",
+    "generate:fixtures:minimal-pmx": "node scripts/fixtures/generate-minimal-pmx.mjs",
+    "generate:fixtures:skinning-pmx": "node scripts/fixtures/generate-minimal-pmx.mjs --all-skinning",
+    "generate:fixtures:skinning-vmd": "node scripts/fixtures/generate-minimal-vmd.mjs",
+    "generate:fixtures:camera-light-vmd": "node scripts/fixtures/generate-minimal-vmd.mjs --camera-light",
+    "generate:fixtures:self-shadow": "node scripts/fixtures/generate-minimal-pmx.mjs --all-self-shadow && node scripts/fixtures/generate-minimal-vmd.mjs --all-self-shadow --output-dir test/fixtures/generated/self-shadow",
+    "render:visual:skinning": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --all-skinning && node scripts/fixtures/generate-minimal-vmd.mjs && node scripts/visual-regression/render-real-models.mjs --manifest scripts/visual-regression/skinning.manifest.json --data-root . --output-dir test-results/visual/skinning/current",
+    "render:visual:skinning:baseline": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --all-skinning && node scripts/fixtures/generate-minimal-vmd.mjs && node scripts/visual-regression/render-real-models.mjs --manifest scripts/visual-regression/skinning.manifest.json --data-root . --output-dir test/fixtures/visual-baselines/skinning",
+    "visual:report:skinning": "node scripts/visual-regression/compute-metrics.mjs --profile skinning --manifest scripts/visual-regression/skinning.manifest.json --baseline-dir test/fixtures/visual-baselines/skinning",
+    "render:visual:generated-pmx": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --all-visual && node scripts/visual-regression/render-real-models.mjs --manifest scripts/visual-regression/generated-pmx.manifest.json --data-root . --output-dir test-results/visual/generated-pmx/current",
+    "render:visual:generated-pmx:webgpu": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --all-visual && node scripts/visual-regression/render-generated-pmx-webgpu.mjs --output-dir test-results/visual/generated-pmx-webgpu/current",
+    "render:visual:generated-pmx:baseline": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --all-visual && node scripts/visual-regression/render-real-models.mjs --manifest scripts/visual-regression/generated-pmx.manifest.json --data-root . --output-dir test/fixtures/visual-baselines/generated-pmx",
+    "render:visual:camera-light-vmd": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --all-visual && npm run generate:fixtures:camera-light-vmd && node scripts/visual-regression/render-real-models.mjs --manifest scripts/visual-regression/camera-light-vmd.manifest.json --data-root . --output-dir test-results/visual/camera-light-vmd/current",
+    "render:visual:camera-light-vmd:baseline": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --all-visual && npm run generate:fixtures:camera-light-vmd && node scripts/visual-regression/render-real-models.mjs --manifest scripts/visual-regression/camera-light-vmd.manifest.json --data-root . --output-dir test/fixtures/visual-baselines/camera-light-vmd",
+    "render:visual:self-shadow": "npm run build && npm run generate:fixtures:self-shadow && node scripts/visual-regression/render-real-models.mjs --manifest scripts/visual-regression/self-shadow.manifest.json --data-root . --output-dir test-results/visual/self-shadow/current",
+    "render:visual:self-shadow:local": "npm run build && node scripts/visual-regression/render-local-self-shadow-pair.mjs",
+    "render:visual:real-models": "npm run build && node scripts/visual-regression/render-real-models.mjs",
+    "render:visual:real-models:baseline": "npm run build && node scripts/visual-regression/render-real-models.mjs --mode baseline",
+    "snapshot:real-models:rest-pose": "npm run build && node scripts/visual-regression/snapshot-real-models-rest-pose.mjs",
+    "snapshot:real-models:rest-pose:baseline": "npm run build && node scripts/visual-regression/snapshot-real-models-rest-pose.mjs --mode baseline",
+    "compare:real-models:rest-pose": "node scripts/visual-regression/compare-real-models-rest-pose.mjs",
+    "visual:report:generated-pmx": "node scripts/visual-regression/compute-metrics.mjs --profile generated-pmx --baseline-dir test/fixtures/visual-baselines/generated-pmx",
+    "visual:report:generated-pmx:webgpu": "node scripts/visual-regression/compute-metrics.mjs --profile generated-pmx --baseline-dir test/fixtures/visual-baselines/generated-pmx --current-dir test-results/visual/generated-pmx-webgpu/current --diff-dir test-results/visual/generated-pmx-webgpu/diff --report test-results/visual/generated-pmx-webgpu/report.json",
+    "visual:report:camera-light-vmd": "node scripts/visual-regression/compute-metrics.mjs --profile camera-light-vmd --baseline-dir test/fixtures/visual-baselines/camera-light-vmd",
+    "visual:report:generated-pmx:flip": "node scripts/visual-regression/compute-metrics.mjs --metric flip --profile generated-pmx --baseline-dir test/fixtures/visual-baselines/generated-pmx",
+    "visual:report:self-shadow": "node scripts/visual-regression/compute-shadow-metrics.mjs --manifest scripts/visual-regression/self-shadow.manifest.json --output-dir test-results/visual/self-shadow/current",
+    "visual:report:real-models": "node scripts/visual-regression/compute-metrics.mjs --profile real-models",
+    "visual:smoke:generated-pmx": "npm run render:visual:generated-pmx && npm run visual:report:generated-pmx",
+    "visual:smoke:camera-light-vmd": "npm run render:visual:camera-light-vmd && npm run visual:report:camera-light-vmd",
+    "visual:smoke:generated-pmx:flip": "npm run render:visual:generated-pmx && npm run visual:report:generated-pmx:flip",
+    "visual:smoke:self-shadow": "npm run render:visual:self-shadow && npm run visual:report:self-shadow",
+    "visual:smoke:viewer-background": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --visual-case mmd-viewer-background-room --output test/fixtures/generated/visual/mmd-viewer-background-room.pmx && node scripts/visual-regression/check-viewer-background.mjs",
+    "visual:smoke:viewer-self-shadow": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --visual-case mmd-viewer-self-shadow-receiver --output test/fixtures/generated/visual/mmd-viewer-self-shadow-receiver.pmx && node scripts/visual-regression/check-viewer-self-shadow.mjs",
+    "smoke:dist": "node scripts/dist-export-smoke.mjs",
+    "smoke:deploy": "npm run build && node scripts/fixtures/generate-minimal-pmx.mjs --visual-case mmd-viewer-self-shadow-receiver --output test/fixtures/generated/visual/mmd-viewer-self-shadow-receiver.pmx && node scripts/build-deploy.mjs && node scripts/smoke-deploy-viewer.mjs",
+    "smoke:types": "node scripts/type-consumer-smoke.mjs",
+    "test": "vitest run",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "@types/three": ">=0.176.0 <1.0.0"
+  },
+  "peerDependencies": {
+    "three": ">=0.176.0 <1.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.26.0",
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.26.0",
+    "pngjs": "^7.0.0",
+    "three": "^0.184.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.32.0",
+    "vitest": "^4.1.8"
+  },
+  "files": [
+    "dist",
+    "docs/assets",
+    "docs/DEVELOPMENT.md",
+    "docs/README.ja.md",
+    "CHANGELOG.md"
+  ]
+}
