@@ -107,6 +107,57 @@
       cursor: pointer;
     }
 
+    .load-progress {
+      position: absolute;
+      z-index: 2;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      appearance: none;
+      border: 0;
+      background: transparent;
+    }
+
+    .load-progress::-webkit-progress-bar { background: #cfdfd8; }
+    .load-progress::-webkit-progress-value { background: #2f9d7b; }
+    .load-progress::-moz-progress-bar { background: #2f9d7b; }
+
+    .diagnostics {
+      position: absolute;
+      z-index: 2;
+      bottom: 16px;
+      left: 16px;
+      width: min(560px, calc(100% - 32px));
+      border: 1px solid #3a4654;
+      border-radius: 8px;
+      background: #101820ed;
+      color: #d8e7e1;
+      font: 12px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+      backdrop-filter: blur(12px);
+    }
+
+    .diagnostics summary {
+      padding: 8px 10px;
+      cursor: pointer;
+      user-select: none;
+      color: #b8d6c9;
+    }
+
+    .diagnostics-body { border-top: 1px solid #3a4654; }
+
+    .diagnostics-log {
+      max-height: 180px;
+      overflow: auto;
+      padding: 8px 10px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .log-info { color: #c7ded4; }
+    .log-warn { color: #f3cf80; }
+    .log-error { color: #ff9d96; }
+
     @media (max-width: 760px) {
       .toolbar {
         top: max(8px, env(safe-area-inset-top));
@@ -156,12 +207,23 @@
       .color-panel button { grid-column: 1 / -1; }
 
       .color-panel label { min-width: 0; }
+
+      .diagnostics {
+        top: 150px;
+        right: max(8px, env(safe-area-inset-right));
+        bottom: auto;
+        left: max(8px, env(safe-area-inset-left));
+        width: auto;
+      }
+
+      .diagnostics-log { max-height: 26dvh; }
     }
   </style>
 </head>
 <body>
   <link rel="preload" href="./assets/appearance-miku/Appearance%20Miku.pmx" as="fetch" crossorigin>
   <main id="app">
+    <progress id="load-progress" class="load-progress" value="0" max="100"></progress>
     <div class="toolbar">
       <label>
         Open PMX
@@ -189,6 +251,13 @@
       <button id="ink-toggle" type="button">Ink style</button>
       <button id="reset-color" type="button">Reset</button>
     </div>
+
+    <details class="diagnostics" open>
+      <summary id="diagnostics-summary">诊断日志 · 初始化中</summary>
+      <div class="diagnostics-body">
+        <div id="diagnostics-log" class="diagnostics-log" role="log" aria-live="polite"></div>
+      </div>
+    </details>
   </main>
 
   <script type="importmap">
@@ -218,6 +287,38 @@
     const folderInput = document.querySelector('#folder-files');
     const motionInput = document.querySelector('#motion-file');
     const modeToggle = document.querySelector('#mode-toggle');
+    const progressBar = document.querySelector('#load-progress');
+    const diagnosticsSummary = document.querySelector('#diagnostics-summary');
+    const diagnosticsLog = document.querySelector('#diagnostics-log');
+
+    function logMessage(message, level = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const line = document.createElement('div');
+      line.className = `log-${level}`;
+      line.textContent = `[${time}] ${message}`;
+      diagnosticsLog.append(line);
+      diagnosticsLog.scrollTop = diagnosticsLog.scrollHeight;
+      while (diagnosticsLog.children.length > 120) diagnosticsLog.firstChild.remove();
+      diagnosticsSummary.textContent = `诊断日志 · ${message}`;
+      if (level === 'error') console.error(message);
+      else if (level === 'warn') console.warn(message);
+      else console.info(message);
+    }
+
+    function setLoadingProgress(value, stage) {
+      progressBar.value = Math.max(0, Math.min(100, value));
+      diagnosticsSummary.textContent = `加载 ${Math.round(progressBar.value)}% · ${stage}`;
+      status.textContent = `${stage} (${Math.round(progressBar.value)}%)`;
+    }
+
+    window.addEventListener('error', (event) => {
+      logMessage(`运行时错误: ${event.message} (${event.filename || 'inline'}:${event.lineno || '?'})`, 'error');
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const reason = event.reason instanceof Error ? event.reason.stack || event.reason.message : String(event.reason);
+      logMessage(`未处理的 Promise 错误: ${reason}`, 'error');
+    });
+
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
     const isMobile = matchMedia('(max-width: 760px)').matches ||
@@ -231,7 +332,11 @@
       powerPreference: 'high-performance'
     });
     const clock = new THREE.Clock();
-    let loader = new ThreeMmdLoader();
+    let loader = new ThreeMmdLoader({
+      onCoreFallback: ({ operation, error }) => {
+        logMessage(`WASM 核心失败，已切换 JavaScript fallback (${operation}): ${error?.message || error}`, 'warn');
+      }
+    });
     let currentModel = null;
     let animationStartTime = 0;
     let hasAnimation = false;
@@ -674,8 +779,13 @@
     }, { passive: false });
 
     async function openModel(source, label) {
-      status.textContent = `Loading ${label}...`;
-      const model = await loader.loadModel(source);
+      const startedAt = performance.now();
+      logMessage(`开始加载模型: ${label}`);
+      setLoadingProgress(5, '读取模型文件');
+      const model = await loader.loadModel(source, {
+        signal: undefined
+      });
+      setLoadingProgress(82, '模型解析完成，准备纹理与材质');
       if (currentModel) scene.remove(currentModel.root);
       currentModel = model;
       scene.add(model.root);
@@ -684,18 +794,24 @@
       if (editMode) createSkeletonEditor(model);
       animationStartTime = clock.getElapsedTime();
       hasAnimation = false;
-      status.textContent = `Loaded ${label}`;
+      setLoadingProgress(100, `模型已加载: ${label}`);
+      logMessage(`模型加载完成，用时 ${Math.round(performance.now() - startedAt)}ms，纹理诊断 ${model.diagnostics.textures.length} 条`);
+      model.diagnostics.textures.forEach((diagnostic) => {
+        logMessage(`纹理 ${diagnostic.code || 'warning'}: ${diagnostic.path || 'unknown'}`, diagnostic.level === 'warning' ? 'warn' : 'info');
+      });
     }
 
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files[0];
       if (!file) return;
       try {
-        loader = new ThreeMmdLoader();
+        loader = new ThreeMmdLoader({
+          onCoreFallback: ({ operation, error }) => logMessage(`上传模型时 WASM fallback (${operation}): ${error?.message || error}`, 'warn')
+        });
         await openModel(file, file.name);
       } catch (error) {
-        console.error(error);
-        status.textContent = `Load failed: ${error.message}`;
+        logMessage(`模型加载失败: ${error.stack || error.message}`, 'error');
+        setLoadingProgress(100, '模型加载失败');
       }
     });
 
@@ -703,17 +819,20 @@
       const files = [...folderInput.files];
       const modelFile = findMmdModelFiles(files)[0];
       if (!modelFile) {
-        status.textContent = 'No PMX or PMD model found in folder';
+        logMessage('文件夹中没有找到 PMX 或 PMD 模型', 'error');
         return;
       }
       try {
+        logMessage(`发现文件夹模型 ${modelFile.webkitRelativePath || modelFile.name}，共 ${files.length} 个文件`);
+        setLoadingProgress(10, '建立文件夹纹理索引');
         loader = new ThreeMmdLoader({
-          textureMap: createMmdTextureMapFromFiles(files, modelFile)
+          textureMap: createMmdTextureMapFromFiles(files, modelFile),
+          onCoreFallback: ({ operation, error }) => logMessage(`文件夹模型 WASM fallback (${operation}): ${error?.message || error}`, 'warn')
         });
         await openModel(modelFile, modelFile.webkitRelativePath || modelFile.name);
       } catch (error) {
-        console.error(error);
-        status.textContent = `Folder load failed: ${error.message}`;
+        logMessage(`文件夹加载失败: ${error.stack || error.message}`, 'error');
+        setLoadingProgress(100, '文件夹加载失败');
       }
     });
 
@@ -724,26 +843,32 @@
         return;
       }
       try {
-        status.textContent = `Loading motion ${file.name}...`;
+        logMessage(`开始加载动作: ${file.name}`);
+        setLoadingProgress(10, '读取动作文件');
         const animation = file.name.toLowerCase().endsWith('.vpd')
           ? await loader.loadPoseAnimation(file, file.name)
           : await loader.loadAnimation(file);
+        setLoadingProgress(75, '绑定动作到模型');
         currentModel.setAnimation(animation);
         hasAnimation = true;
         animationStartTime = clock.getElapsedTime();
-        status.textContent = `Playing ${file.name}`;
+        setLoadingProgress(100, `正在播放: ${file.name}`);
+        logMessage(`动作加载完成: ${file.name}`);
       } catch (error) {
-        console.error(error);
-        status.textContent = `Motion load failed: ${error.message}`;
+        logMessage(`动作加载失败: ${error.stack || error.message}`, 'error');
+        setLoadingProgress(100, '动作加载失败');
       }
     });
 
     window.addEventListener('resize', resize);
     resize();
+    logMessage(`浏览器能力: ${isMobile ? '移动端模式' : '桌面模式'}，像素比 ${pixelRatio}`);
+    logMessage(`WebGL: ${renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL1'}，MSAA ${samples}x`);
+    logMessage('开始初始化 Three.js、WASM 和默认模型');
     openModel('./assets/appearance-miku/Appearance%20Miku.pmx', 'Appearance Miku.pmx')
       .catch((error) => {
-        console.error(error);
-        status.textContent = `Load failed: ${error.message}`;
+        logMessage(`默认模型加载失败: ${error.stack || error.message}`, 'error');
+        setLoadingProgress(100, '初始化失败');
       });
 
     renderer.setAnimationLoop(() => {
