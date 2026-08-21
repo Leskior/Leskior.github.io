@@ -18,9 +18,21 @@
 
     body { overflow: hidden; }
 
-    #app { position: relative; width: 100%; height: 100%; }
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 100dvh;
+      overflow: hidden;
+    }
 
-    canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      touch-action: none;
+    }
 
     canvas:active { cursor: grabbing; }
 
@@ -94,9 +106,61 @@
       color: #18332a;
       cursor: pointer;
     }
+
+    @media (max-width: 760px) {
+      .toolbar {
+        top: max(8px, env(safe-area-inset-top));
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        padding: 8px;
+        font-size: 12px;
+      }
+
+      .toolbar label,
+      .toolbar button { min-width: 0; }
+
+      .toolbar label {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .toolbar input { width: 100%; max-width: none; font-size: 11px; }
+
+      #status {
+        grid-column: 1 / -1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .toolbar small { display: none; }
+
+      .color-panel {
+        top: auto;
+        right: max(8px, env(safe-area-inset-right));
+        bottom: max(8px, env(safe-area-inset-bottom));
+        left: max(8px, env(safe-area-inset-left));
+        width: auto;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 10px;
+        padding: 8px;
+        font-size: 12px;
+      }
+
+      .color-panel .panel-title,
+      .color-panel button { grid-column: 1 / -1; }
+
+      .color-panel label { min-width: 0; }
+    }
   </style>
 </head>
 <body>
+  <link rel="preload" href="./assets/appearance-miku/Appearance%20Miku.pmx" as="fetch" crossorigin>
   <main id="app">
     <div class="toolbar">
       <label>
@@ -156,10 +220,14 @@
     const modeToggle = document.querySelector('#mode-toggle');
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
+    const isMobile = matchMedia('(max-width: 760px)').matches ||
+      navigator.maxTouchPoints > 0;
+    const pixelRatio = isMobile
+      ? Math.min(window.devicePixelRatio, 1.35)
+      : Math.min(window.devicePixelRatio, 2);
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       logarithmicDepthBuffer: true,
-      preserveDrawingBuffer: true,
       powerPreference: 'high-performance'
     });
     const clock = new THREE.Clock();
@@ -185,8 +253,10 @@
     const boneDragPoint = new THREE.Vector3();
     const boneDragNormal = new THREE.Vector3();
     const boneDragPlane = new THREE.Plane();
+    const activePointers = new Map();
+    let touchGesture = null;
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(pixelRatio);
     // Background must be linear so OutputPass's sRGB conversion restores the mint color.
     const backgroundMint = new THREE.Color(0xe4f4ed);
     backgroundMint.convertSRGBToLinear();
@@ -194,7 +264,7 @@
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = 1;
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !isMobile;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     app.append(renderer.domElement);
 
@@ -256,8 +326,9 @@
 
     const composer = new EffectComposer(renderer);
     // Re-enable MSAA antialiasing lost by rendering to the composer's targets.
-    composer.renderTarget1.samples = 4;
-    composer.renderTarget2.samples = 4;
+    const samples = isMobile ? 2 : 4;
+    composer.renderTarget1.samples = samples;
+    composer.renderTarget2.samples = samples;
     composer.addPass(new RenderPass(scene, camera));
     const colorPass = new ShaderPass(ColorAdjustShader);
     composer.addPass(colorPass);
@@ -321,7 +392,7 @@
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.25);
     keyLight.position.set(3, 8, 5);
     keyLight.castShadow = true;
-    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.mapSize.set(isMobile ? 512 : 2048, isMobile ? 512 : 2048);
     scene.add(keyLight);
 
     function applyMaterialLook(root) {
@@ -471,6 +542,20 @@
     renderer.domElement.addEventListener('contextmenu', (event) => event.preventDefault());
 
     renderer.domElement.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'touch') {
+        activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (activePointers.size === 2) {
+          const points = [...activePointers.values()];
+          touchGesture = {
+            distance: Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y),
+            centerX: (points[0].x + points[1].x) * 0.5,
+            centerY: (points[0].y + points[1].y) * 0.5
+          };
+          pointerState = null;
+        }
+        renderer.domElement.setPointerCapture(event.pointerId);
+        return;
+      }
       if (editMode && currentModel) {
         setBonePointer(event);
         const hit = boneRaycaster.intersectObjects(boneControls, false)[0];
@@ -495,6 +580,30 @@
     });
 
     renderer.domElement.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch' && activePointers.has(event.pointerId)) {
+        activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (activePointers.size === 2 && touchGesture) {
+          const points = [...activePointers.values()];
+          const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+          const centerX = (points[0].x + points[1].x) * 0.5;
+          const centerY = (points[0].y + points[1].y) * 0.5;
+          orbitDistance = THREE.MathUtils.clamp(
+            orbitDistance * Math.exp((touchGesture.distance - distance) * 0.006),
+            orbitMinDistance,
+            orbitMaxDistance
+          );
+          const panScale = orbitDistance * 0.0015;
+          const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+          const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+          orbitTarget.addScaledVector(right, -(centerX - touchGesture.centerX) * panScale);
+          orbitTarget.addScaledVector(up, (centerY - touchGesture.centerY) * panScale);
+          touchGesture.distance = distance;
+          touchGesture.centerX = centerX;
+          touchGesture.centerY = centerY;
+          updateCamera();
+        }
+        return;
+      }
       if (boneDragState) {
         setBonePointer(event);
         if (boneRaycaster.ray.intersectPlane(boneDragPlane, boneDragPoint)) {
@@ -528,6 +637,14 @@
     });
 
     renderer.domElement.addEventListener('pointerup', (event) => {
+      if (event.pointerType === 'touch') {
+        activePointers.delete(event.pointerId);
+        if (activePointers.size < 2) touchGesture = null;
+        if (renderer.domElement.hasPointerCapture(event.pointerId)) {
+          renderer.domElement.releasePointerCapture(event.pointerId);
+        }
+        return;
+      }
       if (boneDragState) {
         boneDragState = null;
         renderer.domElement.releasePointerCapture(event.pointerId);
@@ -540,6 +657,8 @@
     renderer.domElement.addEventListener('pointercancel', () => {
       pointerState = null;
       boneDragState = null;
+      activePointers.clear();
+      touchGesture = null;
     });
 
     modeToggle.addEventListener('click', () => setEditMode(!editMode));
